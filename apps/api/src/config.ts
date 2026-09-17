@@ -25,6 +25,30 @@ export const apiConfigSchema = z.object({
   webUrl: z.string().url().default("http://localhost:3000"),
   apiUrl: z.string().url().default("http://localhost:4001"),
   trustedOrigins: z.array(z.string().url()).default([]),
+  // Ingest limits
+  ingestMaxBatchEvents: z.coerce.number().int().positive().default(50),
+  ingestMaxBodyBytes: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(512 * 1024),
+  ingestMaxEventBytes: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(128 * 1024),
+  ingestRateLimitRequestsPerMinute: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60),
+  ingestRateLimitEventsPerMinute: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1000),
+  // User HMAC secret (required for production)
+  userHmacSecret: z.string().optional(),
 });
 
 export type ApiConfig = z.infer<typeof apiConfigSchema>;
@@ -61,6 +85,14 @@ export function loadApiConfigFromEnv(
     webUrl: env["REPLAYBUG_WEB_URL"],
     apiUrl: env["REPLAYBUG_API_URL"],
     trustedOrigins: trustedWithWeb.length > 0 ? trustedWithWeb : undefined,
+    ingestMaxBatchEvents: env["REPLAYBUG_INGEST_MAX_BATCH_EVENTS"],
+    ingestMaxBodyBytes: env["REPLAYBUG_INGEST_MAX_BODY_BYTES"],
+    ingestMaxEventBytes: env["REPLAYBUG_INGEST_MAX_EVENT_BYTES"],
+    ingestRateLimitRequestsPerMinute:
+      env["REPLAYBUG_INGEST_RATE_LIMIT_REQUESTS_PER_MINUTE"],
+    ingestRateLimitEventsPerMinute:
+      env["REPLAYBUG_INGEST_RATE_LIMIT_EVENTS_PER_MINUTE"],
+    userHmacSecret: env["REPLAYBUG_USER_HMAC_SECRET"],
   });
   if (!parsed.success) {
     const details = parsed.error.issues

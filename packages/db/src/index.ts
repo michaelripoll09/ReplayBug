@@ -15,6 +15,11 @@ export {
   projectOrigins,
   projectKeys,
   auditLogs,
+  telemetrySessions,
+  events,
+  eventProcessingOutbox,
+  rateLimitBuckets,
+  processingStateEnum,
 } from "./schema.js";
 export {
   parseOrigin,
@@ -43,3 +48,25 @@ export * as EnvironmentRepo from "./repositories/environments.js";
 export * as OriginRepo from "./repositories/origins.js";
 export * as ProjectKeyRepo from "./repositories/keys.js";
 export * as AuditRepo from "./repositories/audit.js";
+export * as TelemetryRepo from "./repositories/telemetry.js";
+export {
+  sanitizeUrl,
+  sanitizeString,
+  sanitizeContext,
+  redactSecrets,
+  isSensitiveParam,
+  isSensitiveKey,
+  truncateToBytes,
+  sanitizeEventPayload,
+  sanitizeBatchRequest,
+} from "./sanitize.js";
+
+export {
+  upsertTelemetrySession,
+  insertEvent,
+  eventExists,
+  insertOutbox,
+  checkAndIncrementRateLimit,
+  findKeyByPrefix,
+  listOriginsByProject,
+} from "./repositories/telemetry.js";

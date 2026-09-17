@@ -24,6 +24,7 @@ import { registerProjectRoutes } from "./routes/projects.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerOriginRoutes } from "./routes/origins.js";
 import { registerKeyRoutes } from "./routes/keys.js";
+import { registerIngestRoutes } from "./routes/ingest.js";
 
 export interface BuildAppOptions {
   config: ApiConfig;
@@ -83,6 +84,10 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
             name: "Keys",
             description: "Public ingest key metadata + rotation",
           },
+          {
+            name: "Ingest",
+            description: "Public telemetry event ingestion",
+          },
         ],
       },
     });
@@ -131,6 +136,7 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   await registerEnvironmentRoutes(app, { db, auth });
   await registerOriginRoutes(app, { db, auth });
   await registerKeyRoutes(app, { db, auth });
+  await registerIngestRoutes(app, { db });
 
   return app;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SDK_NAME, SDK_PROTOCOL_VERSION, SDK_VERSION } from "./index.js";
+import { SDK_NAME, SDK_PROTOCOL_VERSION, SDK_VERSION, init } from "./index.js";
 
 describe("@replaybug/sdk foundation metadata", () => {
   it("exposes a semver SDK version", () => {
@@ -11,8 +11,7 @@ describe("@replaybug/sdk foundation metadata", () => {
     expect(SDK_PROTOCOL_VERSION).toBe(1);
   });
 
-  it("does not export a fake init() that pretends to capture", async () => {
-    const moduleExports = await import("./index.js");
-    expect("init" in moduleExports).toBe(false);
+  it("exports init() function", () => {
+    expect(typeof init).toBe("function");
   });
 });

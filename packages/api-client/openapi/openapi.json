@@ -2456,6 +2456,221 @@
           }
         }
       }
+    },
+    "/api/ingest/v1/batch": {
+      "post": {
+        "tags": ["Ingest"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "protocol_version",
+                  "sdk_name",
+                  "sdk_version",
+                  "session",
+                  "events"
+                ],
+                "properties": {
+                  "protocol_version": {
+                    "type": "integer",
+                    "enum": [1]
+                  },
+                  "sdk_name": {
+                    "type": "string"
+                  },
+                  "sdk_version": {
+                    "type": "string"
+                  },
+                  "session": {
+                    "type": "object"
+                  },
+                  "events": {
+                    "type": "array"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "accepted",
+                    "duplicate",
+                    "rejected",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "accepted": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "duplicate": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "rejected": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["code", "message", "requestId"],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "INVALID_PUBLIC_KEY",
+                        "REVOKED_PUBLIC_KEY",
+                        "DISALLOWED_ORIGIN",
+                        "UNSUPPORTED_PROTOCOL_VERSION",
+                        "MALFORMED_PAYLOAD",
+                        "PAYLOAD_TOO_LARGE",
+                        "RATE_LIMITED",
+                        "UNSUPPORTED_EVENT_TYPE"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["code", "message", "requestId"],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "INVALID_PUBLIC_KEY",
+                        "REVOKED_PUBLIC_KEY",
+                        "DISALLOWED_ORIGIN",
+                        "UNSUPPORTED_PROTOCOL_VERSION",
+                        "MALFORMED_PAYLOAD",
+                        "PAYLOAD_TOO_LARGE",
+                        "RATE_LIMITED",
+                        "UNSUPPORTED_EVENT_TYPE"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["code", "message", "requestId"],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "INVALID_PUBLIC_KEY",
+                        "REVOKED_PUBLIC_KEY",
+                        "DISALLOWED_ORIGIN",
+                        "UNSUPPORTED_PROTOCOL_VERSION",
+                        "MALFORMED_PAYLOAD",
+                        "PAYLOAD_TOO_LARGE",
+                        "RATE_LIMITED",
+                        "UNSUPPORTED_EVENT_TYPE"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["code", "message", "requestId"],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "INVALID_PUBLIC_KEY",
+                        "REVOKED_PUBLIC_KEY",
+                        "DISALLOWED_ORIGIN",
+                        "UNSUPPORTED_PROTOCOL_VERSION",
+                        "MALFORMED_PAYLOAD",
+                        "PAYLOAD_TOO_LARGE",
+                        "RATE_LIMITED",
+                        "UNSUPPORTED_EVENT_TYPE"
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "tags": [
@@ -2482,6 +2697,10 @@
     {
       "name": "Keys",
       "description": "Public ingest key metadata + rotation"
+    },
+    {
+      "name": "Ingest",
+      "description": "Public telemetry event ingestion"
     }
   ],
   "x-replaybug-generated": "DO NOT EDIT BY HAND. Generated by pnpm api:generate from Fastify route schemas. Run pnpm api:generate to refresh."

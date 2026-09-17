@@ -30,6 +30,12 @@ async function main(): Promise<void> {
       webUrl: "http://localhost:3000",
       apiUrl: "http://localhost:4001",
       trustedOrigins: ["http://localhost:3000"],
+      ingestMaxBatchEvents: 50,
+      ingestMaxBodyBytes: 512 * 1024,
+      ingestMaxEventBytes: 128 * 1024,
+      ingestRateLimitRequestsPerMinute: 60,
+      ingestRateLimitEventsPerMinute: 1000,
+      userHmacSecret: undefined,
     },
     checkDatabase: async () => true,
   });

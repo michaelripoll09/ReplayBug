@@ -30,7 +30,8 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "pg": "8.23.0",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "@replaybug/contracts": "workspace:*"
   },
   "devDependencies": {
     "@replaybug/config": "workspace:*",

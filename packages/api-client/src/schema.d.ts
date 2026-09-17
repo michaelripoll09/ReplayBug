@@ -1598,6 +1598,149 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/ingest/v1/batch": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            /** @enum {integer} */
+            protocol_version: 1;
+            sdk_name: string;
+            sdk_version: string;
+            session: Record<string, never>;
+            events: unknown[];
+          };
+        };
+      };
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              accepted: number;
+              duplicate: number;
+              rejected: number;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {string} */
+              code:
+                | "INVALID_PUBLIC_KEY"
+                | "REVOKED_PUBLIC_KEY"
+                | "DISALLOWED_ORIGIN"
+                | "UNSUPPORTED_PROTOCOL_VERSION"
+                | "MALFORMED_PAYLOAD"
+                | "PAYLOAD_TOO_LARGE"
+                | "RATE_LIMITED"
+                | "UNSUPPORTED_EVENT_TYPE";
+              message: string;
+              requestId: string;
+              details?: Record<string, never>;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {string} */
+              code:
+                | "INVALID_PUBLIC_KEY"
+                | "REVOKED_PUBLIC_KEY"
+                | "DISALLOWED_ORIGIN"
+                | "UNSUPPORTED_PROTOCOL_VERSION"
+                | "MALFORMED_PAYLOAD"
+                | "PAYLOAD_TOO_LARGE"
+                | "RATE_LIMITED"
+                | "UNSUPPORTED_EVENT_TYPE";
+              message: string;
+              requestId: string;
+              details?: Record<string, never>;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {string} */
+              code:
+                | "INVALID_PUBLIC_KEY"
+                | "REVOKED_PUBLIC_KEY"
+                | "DISALLOWED_ORIGIN"
+                | "UNSUPPORTED_PROTOCOL_VERSION"
+                | "MALFORMED_PAYLOAD"
+                | "PAYLOAD_TOO_LARGE"
+                | "RATE_LIMITED"
+                | "UNSUPPORTED_EVENT_TYPE";
+              message: string;
+              requestId: string;
+              details?: Record<string, never>;
+            };
+          };
+        };
+        /** @description Default Response */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {string} */
+              code:
+                | "INVALID_PUBLIC_KEY"
+                | "REVOKED_PUBLIC_KEY"
+                | "DISALLOWED_ORIGIN"
+                | "UNSUPPORTED_PROTOCOL_VERSION"
+                | "MALFORMED_PAYLOAD"
+                | "PAYLOAD_TOO_LARGE"
+                | "RATE_LIMITED"
+                | "UNSUPPORTED_EVENT_TYPE";
+              message: string;
+              requestId: string;
+              details?: Record<string, never>;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {

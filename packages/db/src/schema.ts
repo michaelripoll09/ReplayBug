@@ -11,6 +11,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -271,6 +272,156 @@ export const auditLogs = pgTable(
   ],
 );
 
+/**
+ * Telemetry session — unrelated to auth session.
+ * Tracks a browser SDK session for a project.
+ */
+export const telemetrySessions = pgTable(
+  "telemetry_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    sdkSessionId: text("sdk_session_id").notNull(),
+    anonymousUserHash: text("anonymous_user_hash"),
+    environment: text("environment").notNull(),
+    release: text("release"),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    initialUrl: text("initial_url").notNull(),
+    browserName: text("browser_name"),
+    browserVersion: text("browser_version"),
+    osName: text("os_name"),
+    osVersion: text("os_version"),
+    deviceType: text("device_type"),
+    viewportWidth: integer("viewport_width"),
+    viewportHeight: integer("viewport_height"),
+    sdkVersion: text("sdk_version").notNull(),
+  },
+  (t) => [
+    unique("telemetry_sessions_project_sdk_unique").on(
+      t.projectId,
+      t.sdkSessionId,
+    ),
+    index("telemetry_sessions_project_last_seen_idx").on(
+      t.projectId,
+      t.lastSeenAt,
+    ),
+    index("telemetry_sessions_project_started_idx").on(
+      t.projectId,
+      t.startedAt,
+    ),
+  ],
+);
+
+/**
+ * Event processing state enum.
+ */
+export const processingStateEnum = pgEnum("processing_state", [
+  "pending",
+  "processed",
+  "rejected",
+]);
+
+/**
+ * Telemetry events — core fact table.
+ * Unique constraint on (project_id, client_event_id) provides idempotency.
+ */
+export const events = pgTable(
+  "events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    telemetrySessionId: uuid("telemetry_session_id")
+      .notNull()
+      .references(() => telemetrySessions.id, { onDelete: "cascade" }),
+    clientEventId: text("client_event_id").notNull(),
+    sequenceNumber: integer("sequence_number").notNull(),
+    eventType: text("event_type").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    environment: text("environment").notNull(),
+    release: text("release"),
+    pageUrl: text("page_url"),
+    payloadJson: jsonb("payload_json").notNull(),
+    processingState: processingStateEnum("processing_state")
+      .notNull()
+      .default("pending"),
+    rejectionReason: text("rejection_reason"),
+  },
+  (t) => [
+    unique("events_project_client_event_unique").on(
+      t.projectId,
+      t.clientEventId,
+    ),
+    index("events_project_occurred_idx").on(t.projectId, t.occurredAt),
+    index("events_session_sequence_idx").on(
+      t.telemetrySessionId,
+      t.sequenceNumber,
+    ),
+    index("events_project_state_idx").on(t.projectId, t.processingState),
+    check(
+      "events_event_type_check",
+      sql`${t.eventType} IN ('exception','unhandled_rejection','console_error','network','navigation','click','input','message','custom_breadcrumb','sdk')`,
+    ),
+    check(
+      "events_processing_state_check",
+      sql`${t.processingState} IN ('pending','processed','rejected')`,
+    ),
+  ],
+);
+
+/**
+ * Event processing outbox — ensures accepted events are eventually processed.
+ * One row per event, inserted in the same transaction as the event.
+ */
+export const eventProcessingOutbox = pgTable(
+  "event_processing_outbox",
+  {
+    eventId: uuid("event_id")
+      .primaryKey()
+      .references(() => events.id, { onDelete: "cascade" }),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+  },
+  (t) => [index("event_processing_outbox_dispatched_idx").on(t.dispatchedAt)],
+);
+
+/**
+ * Rate limit buckets — per-project, per-key-prefix, per-minute.
+ * Atomic upserts provide correct counters without Redis.
+ */
+export const rateLimitBuckets = pgTable(
+  "rate_limit_buckets",
+  {
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    keyPrefix: text("key_prefix").notNull(),
+    bucketStart: timestamp("bucket_start", { withTimezone: true }).notNull(),
+    requestCount: integer("request_count").notNull().default(0),
+    eventCount: integer("event_count").notNull().default(0),
+  },
+  (t) => [
+    unique("rate_limit_buckets_project_prefix_bucket_unique").on(
+      t.projectId,
+      t.keyPrefix,
+      t.bucketStart,
+    ),
+    index("rate_limit_buckets_bucket_start_idx").on(t.bucketStart),
+  ],
+);
+
 /** Drizzle schema map shared by the client factory and migrations. */
 export const schema = {
   user: users,
@@ -284,6 +435,10 @@ export const schema = {
   projectOrigins,
   projectKeys,
   auditLogs,
+  telemetrySessions,
+  events,
+  eventProcessingOutbox,
+  rateLimitBuckets,
 } as const;
 
 export type Schema = typeof schema;

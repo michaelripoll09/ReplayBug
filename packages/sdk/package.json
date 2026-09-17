@@ -1,7 +1,7 @@
 {
   "name": "@replaybug/sdk",
-  "version": "0.1.0",
-  "description": "ReplayBug browser SDK (foundation metadata only; capture API arrives in a later block)",
+  "version": "0.2.0",
+  "description": "ReplayBug browser SDK",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -22,11 +22,16 @@
     "dev": "tsup src/index.ts --format esm,cjs --dts --sourcemap --watch --out-dir dist",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "size": "tsup src/index.ts --format esm --dts --sourcemap --clean --out-dir dist-size && gzip -c dist-size/index.js | wc -c && wc -c dist-size/index.js"
+  },
+  "dependencies": {
+    "@replaybug/contracts": "workspace:*"
   },
   "devDependencies": {
     "@replaybug/config": "workspace:*",
     "@types/node": "22.20.3",
+    "happy-dom": "^20.14.5",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "5.0.1"

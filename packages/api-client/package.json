@@ -1,7 +1,7 @@
 {
   "name": "@replaybug/api-client",
   "version": "0.1.0",
-  "description": "Typed dashboard API client boundary for ReplayBug (foundation stub; generated client arrives later)",
+  "description": "Typed dashboard API client for ReplayBug (OpenAPI-driven: openapi-fetch + openapi-typescript)",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -18,17 +18,23 @@
     "dist"
   ],
   "scripts": {
+    "api:generate": "tsx scripts/generate-openapi.ts && openapi-typescript openapi/openapi.json -o src/schema.d.ts",
     "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean --out-dir dist",
     "dev": "tsup src/index.ts --format esm,cjs --dts --sourcemap --watch --out-dir dist",
-    "lint": "eslint src --max-warnings 0",
+    "lint": "eslint src scripts --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
     "@replaybug/config": "workspace:*",
     "@types/node": "22.20.3",
+    "openapi-typescript": "^7.13.0",
     "tsup": "8.5.1",
+    "tsx": "4.23.13",
     "typescript": "5.9.3",
     "vitest": "5.0.1"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.14.1"
   }
 }

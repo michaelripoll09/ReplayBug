@@ -4,15 +4,27 @@ Developer observability for reproducible bugs: privacy-safe browser failure
 context, grouped issues, session timelines, and Playwright reproduction
 tests — on a self-hostable stack with no paid services.
 
-> **Status: Block 2 foundation.** Auth, tenancy, workspaces, projects,
-> environments, origins and public-key bootstrap exist with real PostgreSQL.
-> Event ingest, SDK capture, issues, jobs, SSE, releases, source maps,
-> Playwright generation and dashboard UI are explicitly not built yet.
+> **Status: Block 3 dashboard.** Auth, tenancy, onboarding, dashboard shell,
+> environment/origin/key-rotation settings, typed OpenAPI client and Chromium
+> E2E exist with real PostgreSQL. Event ingest, SDK capture, issues, sessions,
+> timeline, Playwright generation, jobs, SSE, releases, source maps and
+> notifications are explicitly not built yet.
 
 ## What exists today
 
 - pnpm workspaces + Turborepo monorepo (`apps/*`, `packages/*`)
-- Next.js smoke page at `apps/web` ("ReplayBug" + tagline, light/dark toggle)
+- Next.js dashboard at `apps/web`: smart `/` redirect, `/login`, `/register`
+  (email/password, no OAuth), `/onboarding[/workspace|/project|/origin|/complete]`
+  wizard, `/app/workspaces/[workspaceId]` and `/app/projects/[projectId]`
+  overviews (real config data only, honest "Telemetry not configured yet"),
+  `/app/projects/[projectId]/settings[/general|/environments|/origins|/keys]`
+  with RBAC hide-or-readonly, sidebar + workspace switcher + theme
+  (light/dark/system, no flash) + mobile drawer. See
+  `docs/architecture/frontend.md`.
+- Typed dashboard client at `packages/api-client`: `pnpm api:generate` builds
+  Fastify in-process, writes `openapi/openapi.json` + `src/schema.d.ts`,
+  `createReplayBugApiClient({ baseUrl, fetch })` with `credentials: include`
+  and `{code,message,requestId,details}` normalization. CI fails on drift.
 - Fastify API at `apps/api` with `GET /health/live`, `GET /health/ready`
   (PostgreSQL check), `GET /api/v1/meta`, request IDs, contracts-based
   error envelope, and OpenAPI docs in non-production (`/docs`)
@@ -31,20 +43,22 @@ tests — on a self-hostable stack with no paid services.
   (Zod: health, meta, error envelope, user/workspace/project/env/origin/keys),
   `@replaybug/db` (pg + Drizzle schema, migrations, repositories, origin parser,
   key crypto), `@replaybug/sdk` (version metadata only), `@replaybug/cli`
-  (`replaybug --version/--help`), `@replaybug/api-client` (OpenAPI strategy stub),
-  `@replaybug/ui` (`cn` + `Button`), `@replaybug/config` (shared TS presets)
+  (`replaybug --version/--help`), `@replaybug/api-client` (generated OpenAPI
+  client, see above), `@replaybug/ui` (`cn` + `Button`), `@replaybug/config`
+  (shared TS presets)
 - Real Drizzle versioned migrations (`packages/db/drizzle`) and dev-only seed
   (`pnpm db:seed`: demo user/workspace/project/prod env/dev env/localhost origin)
 - PostgreSQL 17 via Docker Compose with healthcheck and persistent volume
-- GitHub Actions CI (format, lint, typecheck, tests with Postgres, build)
+- GitHub Actions CI (format, lint, typecheck, tests with Postgres, OpenAPI
+  drift check, build, Playwright Chromium E2E)
 
 ## What is explicitly not built yet
 
 Telemetry ingest, real SDK capture, issue grouping, fingerprinting,
-functional pg-boss jobs, source maps, Playwright generator, functional
-dashboard/auth UI, Ollama analysis, invitations, GitHub OAuth, CLI secret
-tokens, SSE, notifications, comments, releases, and onboarding visuals.
-Web stays smoke. See `` for the full plan.
+functional pg-boss jobs, source maps, Playwright generator, SSE,
+notifications, comments, releases, Ollama analysis, invitations, GitHub OAuth,
+CLI secret tokens and public demo mode. No fake SDK snippets, metrics, charts
+or screenshots. See `` for the full plan.
 
 ## Stack
 
@@ -73,8 +87,10 @@ pnpm dev
 Auth runs locally with email/password (no OAuth, no paid services). Configure
 `REPLAYBUG_AUTH_SECRET` (min 32 chars), `REPLAYBUG_API_URL`,
 `REPLAYBUG_WEB_URL` and `REPLAYBUG_TRUSTED_ORIGINS` in `.env` (see
-`.env.example`). Startup fails fast with a readable message when required
-config is missing.
+`.env.example`), plus `NEXT_PUBLIC_REPLAYBUG_API_URL` for the dashboard
+(validated once in `apps/web/lib/config.ts`; dev `http://localhost:4001`,
+prod reverse-proxy friendly). Startup fails fast with a readable message when
+required config is missing.
 
 Tenancy: one user creates a workspace (owner), then projects. Project slugs are
 unique per workspace; workspace slugs are globally unique. Roles are
@@ -108,8 +124,10 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm api:generate        # refresh OpenAPI + typed client (CI checks drift)
 pnpm build
 node packages/cli/bin/replaybug.js --version
+pnpm --filter @replaybug/web test:e2e   # Chromium E2E (needs PG + build)
 ```
 
 ## Monorepo structure
@@ -117,7 +135,7 @@ node packages/cli/bin/replaybug.js --version
 ```text
 replaybug/
 ├─ apps/
-│  ├─ web/        # Next.js dashboard smoke screen
+│  ├─ web/        # Next.js dashboard (auth/onboarding/shell/settings)
 │  ├─ api/        # Fastify health + meta + auth/tenancy API
 │  ├─ worker/     # Worker lifecycle skeleton (pg-boss registry stub)
 │  └─ demo/       # Vite smoke screen (source maps on)
@@ -126,12 +144,13 @@ replaybug/
 │  ├─ cli/            # replaybug --version/--help
 │  ├─ db/             # pg + Drizzle schema/migrations/repos/parsers
 │  ├─ contracts/      # Zod health/meta/error + tenancy DTOs
-│  ├─ api-client/     # OpenAPI client strategy stub
+│  ├─ api-client/     # Generated OpenAPI client (openapi-fetch + types)
 │  ├─ ui/             # cn + Button (shadcn-compatible base)
 │  ├─ observability/  # Pino logger factory
 │  └─ config/         # Shared tsconfig presets
 ├─ docs/
 │  ├─ architecture/tenancy.md
+│  ├─ architecture/frontend.md
 │  ├─ specs/replaybug-master-spec.md
 │  └─ adr/
 ├─ scripts/           # seed-dev (dev-only tenancy seed)

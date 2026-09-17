@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:migrate": "pnpm --filter @replaybug/db db:migrate",
-    "db:seed": "tsx scripts/seed-dev.ts"
+    "db:seed": "tsx scripts/seed-dev.ts",
+    "api:generate": "pnpm --filter @replaybug/api-client api:generate"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

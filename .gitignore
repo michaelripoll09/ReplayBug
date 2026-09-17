@@ -17,6 +17,8 @@ apps/demo/dist/
 # Test outputs
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
 
 # Environment
 .env
@@ -30,6 +32,9 @@ coverage/
 # Local artifact storage (future release artifacts live outside the repo)
 .artifacts/
 data/
+
+# Agent/tool local state (auto-generated, never commit)
+.atl/
 
 # OS / editor
 .DS_Store

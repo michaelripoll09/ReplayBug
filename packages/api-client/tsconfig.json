@@ -1,8 +1,9 @@
 {
   "extends": "@replaybug/config/packages.json",
   "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
     "outDir": "dist",
     "noEmit": true
   },
-  "include": ["src", "vitest.config.ts"]
+  "include": ["src", "scripts", "vitest.config.ts"]
 }

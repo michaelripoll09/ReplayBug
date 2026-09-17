@@ -86,6 +86,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
+  openapi-drift:
+    name: openapi-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm api:generate
+      - run: git diff --exit-code -- packages/api-client/openapi/openapi.json packages/api-client/src/schema.d.ts
+
   build:
     name: build
     runs-on: ubuntu-latest
@@ -100,3 +116,42 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+  e2e:
+    name: e2e (playwright chromium)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: replaybug
+          POSTGRES_PASSWORD: replaybug
+          POSTGRES_DB: replaybug
+        ports:
+          - 5544:5432
+        options: >-
+          --health-cmd "pg_isready -U replaybug -d replaybug"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REPLAYBUG_DATABASE_URL: postgres://replaybug:replaybug@localhost:5544/replaybug
+      REPLAYBUG_AUTH_SECRET: test-secret-0123456789abcdef0123456789
+      REPLAYBUG_WEB_URL: http://localhost:3000
+      REPLAYBUG_API_URL: http://localhost:4001
+      REPLAYBUG_TRUSTED_ORIGINS: http://localhost:3000
+      NEXT_PUBLIC_REPLAYBUG_API_URL: http://localhost:4001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+      - run: pnpm build
+      - run: pnpm --filter @replaybug/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @replaybug/web test:e2e

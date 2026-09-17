@@ -11,6 +11,10 @@ const baseConfig: ApiConfig = {
   version: "0.1.0",
   databaseUrl: "postgres://localhost:5432/replaybug",
   logLevel: "silent",
+  authSecret: "test-secret-0123456789abcdef0123456789",
+  webUrl: "http://localhost:3000",
+  apiUrl: "http://localhost:4001",
+  trustedOrigins: ["http://localhost:3000"],
 };
 
 describe("GET /health/live", () => {

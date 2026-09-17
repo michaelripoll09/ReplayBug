@@ -18,6 +18,13 @@ export const apiConfigSchema = z.object({
   // break startup. The AI feature itself arrives in a later block.
   ollamaUrl: z.string().optional(),
   ollamaModel: z.string().optional(),
+  // Block 2 auth boundary. All auth-related env is validated here, fail-fast.
+  authSecret: z
+    .string()
+    .min(32, "REPLAYBUG_AUTH_SECRET must be at least 32 characters"),
+  webUrl: z.string().url().default("http://localhost:3000"),
+  apiUrl: z.string().url().default("http://localhost:4001"),
+  trustedOrigins: z.array(z.string().url()).default([]),
 });
 
 export type ApiConfig = z.infer<typeof apiConfigSchema>;
@@ -25,6 +32,21 @@ export type ApiConfig = z.infer<typeof apiConfigSchema>;
 export function loadApiConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): ApiConfig {
+  const rawTrusted = env["REPLAYBUG_TRUSTED_ORIGINS"];
+  const parsedTrusted =
+    rawTrusted !== undefined && rawTrusted.trim() !== ""
+      ? rawTrusted
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : [];
+  const webUrl = env["REPLAYBUG_WEB_URL"];
+  const trustedWithWeb =
+    webUrl !== undefined &&
+    webUrl.trim() !== "" &&
+    !parsedTrusted.includes(webUrl.trim())
+      ? [...parsedTrusted, webUrl.trim()]
+      : parsedTrusted;
   const parsed = apiConfigSchema.safeParse({
     port: env["REPLAYBUG_API_PORT"] ?? env["PORT"],
     host: env["REPLAYBUG_API_HOST"] ?? env["HOST"],
@@ -35,6 +57,10 @@ export function loadApiConfigFromEnv(
     logLevel: env["LOG_LEVEL"],
     ollamaUrl: env["REPLAYBUG_OLLAMA_URL"],
     ollamaModel: env["REPLAYBUG_OLLAMA_MODEL"],
+    authSecret: env["REPLAYBUG_AUTH_SECRET"] ?? env["BETTER_AUTH_SECRET"],
+    webUrl: env["REPLAYBUG_WEB_URL"],
+    apiUrl: env["REPLAYBUG_API_URL"],
+    trustedOrigins: trustedWithWeb.length > 0 ? trustedWithWeb : undefined,
   });
   if (!parsed.success) {
     const details = parsed.error.issues
@@ -42,5 +68,10 @@ export function loadApiConfigFromEnv(
       .join("; ");
     throw new Error(`Invalid API configuration: ${details}`);
   }
-  return parsed.data;
+  const data = parsed.data;
+  // Trusted dashboard origin defaults to the web URL when not configured.
+  if (data.trustedOrigins.length === 0) {
+    return { ...data, trustedOrigins: [data.webUrl] };
+  }
+  return data;
 }

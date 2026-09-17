@@ -28,7 +28,7 @@ export function testApiConfig(overrides?: Partial<ApiConfig>): ApiConfig {
     ingestMaxEventBytes: 128 * 1024,
     ingestRateLimitRequestsPerMinute: 60,
     ingestRateLimitEventsPerMinute: 1000,
-    userHmacSecret: undefined,
+    userHmacSecret: "test-hmac-secret-0123456789abcdef0123456789",
     ...overrides,
   };
 }

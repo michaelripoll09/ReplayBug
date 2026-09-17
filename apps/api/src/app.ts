@@ -136,7 +136,7 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   await registerEnvironmentRoutes(app, { db, auth });
   await registerOriginRoutes(app, { db, auth });
   await registerKeyRoutes(app, { db, auth });
-  await registerIngestRoutes(app, { db });
+  await registerIngestRoutes(app, { db, config });
 
   return app;
 }

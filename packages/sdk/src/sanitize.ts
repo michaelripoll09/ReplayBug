@@ -32,7 +32,8 @@ export function sanitizeUrl(input: string): string {
     for (const [key, value] of params) {
       const encodedKey = encodeURIComponent(key);
       // Don't encode the REDACTED placeholder, keep it literal
-      const encodedValue = value === REDACTED ? REDACTED : encodeURIComponent(value);
+      const encodedValue =
+        value === REDACTED ? REDACTED : encodeURIComponent(value);
       searchParts.push(`${encodedKey}=${encodedValue}`);
     }
     url.search = searchParts.length > 0 ? "?" + searchParts.join("&") : "";
@@ -58,7 +59,7 @@ export function isSensitiveParam(name: string): boolean {
  */
 function sanitizeUrlsInString(input: string): string {
   // Simple URL regex to find http(s) URLs in text
-  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\] ]+/gi;
   return input.replace(urlRegex, (url) => sanitizeUrl(url));
 }
 
@@ -76,7 +77,8 @@ export function sanitizeString(input: string): string {
   // Match short tokens too when in Authorization header context
   result = result.replace(
     /\bAuthorization\s*(:|=)\s*Bearer\s+(\S+)/gi,
-    (match, separator, token) => `Authorization${separator} Bearer ${REDACTED}`,
+    (match, separator, _token) =>
+      `Authorization${separator} Bearer ${REDACTED}`,
   );
 
   // JWT tokens (three base64url parts separated by dots) - anywhere
@@ -102,13 +104,13 @@ export function sanitizeString(input: string): string {
   // Preserve the exact separator and whitespace from input
   result = result.replace(
     /\b(api[_-]?key|access[_-]?token|secret[_-]?key)\s*(:|=)(\s*)(\S+)/gi,
-    (match, prefix, sep, ws, value) => `${prefix}${sep}${ws}${REDACTED}`,
+    (match, prefix, sep, ws, _value) => `${prefix}${sep}${ws}${REDACTED}`,
   );
 
   // Password patterns: "password=...", "pwd=...", "password: ...", "pwd: ..."
   result = result.replace(
     /\b(password|pwd|pass)\s*(:|=)(\s*)(\S+)/gi,
-    (match, prefix, sep, ws, value) => `${prefix}${sep}${ws}${REDACTED}`,
+    (match, prefix, sep, ws, _value) => `${prefix}${sep}${ws}${REDACTED}`,
   );
 
   // Credit card numbers (Luhn not verified, just pattern)
@@ -124,7 +126,7 @@ export function sanitizeString(input: string): string {
   // Match sessionid, session_id, sid, csrf, xsrf, _token
   result = result.replace(
     /\b(session(?:id|_id)?|sid|csrf|xsrf|_token)\s*(:|=)(\s*)(\S+)/gi,
-    (match, prefix, sep, ws, value) => `${prefix}${sep}${ws}${REDACTED}`,
+    (match, prefix, sep, ws, _value) => `${prefix}${sep}${ws}${REDACTED}`,
   );
 
   // Authorization header values (Basic, Bearer, etc.) - match any length >= 8 chars
@@ -184,7 +186,9 @@ export function sanitizeContext(
       let sanitized: unknown;
       if (Array.isArray(value)) {
         sanitized = value.map((v) =>
-          typeof v === "string" ? sanitizeString(v) : sanitizeValue(v, depth + 1),
+          typeof v === "string"
+            ? sanitizeString(v)
+            : sanitizeValue(v, depth + 1),
         );
       } else {
         sanitized = sanitizeContext(
@@ -368,7 +372,9 @@ export function truncateToBytes(input: string, maxBytes: number): string {
   let end = Math.min(maxBytes, bytes.length);
   while (end > 0) {
     try {
-      const truncated = new TextDecoder("utf-8", { fatal: true }).decode(bytes.slice(0, end));
+      const truncated = new TextDecoder("utf-8", { fatal: true }).decode(
+        bytes.slice(0, end),
+      );
       // Successfully decoded, add ellipsis and return
       return truncated + "…";
     } catch {

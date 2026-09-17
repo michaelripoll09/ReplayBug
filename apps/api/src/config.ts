@@ -47,8 +47,10 @@ export const apiConfigSchema = z.object({
     .int()
     .positive()
     .default(1000),
-  // User HMAC secret (required for production)
-  userHmacSecret: z.string().optional(),
+  // User HMAC secret (required for production, min 32 chars)
+  userHmacSecret: z
+    .string()
+    .min(32, "REPLAYBUG_USER_HMAC_SECRET must be at least 32 characters"),
 });
 
 export type ApiConfig = z.infer<typeof apiConfigSchema>;

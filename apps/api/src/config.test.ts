@@ -5,6 +5,7 @@ describe("loadApiConfigFromEnv", () => {
   const baseEnv = {
     REPLAYBUG_DATABASE_URL: "postgres://localhost:5432/replaybug",
     REPLAYBUG_AUTH_SECRET: "test-secret-0123456789abcdef0123456789",
+    REPLAYBUG_USER_HMAC_SECRET: "test-hmac-secret-0123456789abcdef0123456789",
   };
 
   it("loads defaults with only the database URL set", () => {

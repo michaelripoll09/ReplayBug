@@ -445,6 +445,7 @@ export class ReplayBug {
       release: this.state.options.release,
       environment: this.state.options.environment,
       tags: { ...this.state.tags },
+      user_id: this.state.userId || undefined,
     };
   }
 

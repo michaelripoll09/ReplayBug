@@ -1,4 +1,9 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  timingSafeEqual,
+  createHmac,
+} from "node:crypto";
 
 /**
  * Public ingest key format: `rb_pk_<prefix>_<secret>`.
@@ -86,4 +91,44 @@ export function verifyPublicKey(
   } catch {
     return false;
   }
+}
+
+/**
+ * Derive anonymous user hash using HMAC-SHA256.
+ *
+ * This ensures:
+ * - Same project + same raw user ID → same hash (deterministic)
+ * - Different project + same raw user ID → different hash (project isolation)
+ * - Different raw user ID → different hash (user isolation)
+ * - Raw user ID never persists in database or logs
+ *
+ * The secret must be a server-side configured secret (min 32 bytes, from env).
+ * Production must fail-fast if secret is missing or too short.
+ */
+export interface DeriveAnonymousUserHashInput {
+  projectId: string;
+  rawUserId: string;
+  secret: string;
+}
+
+export function deriveAnonymousUserHash(
+  input: DeriveAnonymousUserHashInput,
+): string {
+  const { projectId, rawUserId, secret } = input;
+
+  if (!secret || secret.length < 32) {
+    throw new Error(
+      "Anonymous user hash secret must be configured and at least 32 characters",
+    );
+  }
+  if (!projectId || !rawUserId) {
+    throw new Error("projectId and rawUserId are required");
+  }
+
+  // HMAC-SHA256 with projectId as salt for domain separation
+  // Format: HMAC-SHA256(secret, projectId + ":" + rawUserId)
+  const data = `${projectId}:${rawUserId}`;
+  const hmac = createHmac("sha256", secret);
+  hmac.update(data);
+  return hmac.digest("hex");
 }

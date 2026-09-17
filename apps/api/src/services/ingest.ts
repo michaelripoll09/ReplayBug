@@ -2,6 +2,7 @@ import {
   verifyPublicKey,
   findKeyByPrefix,
   listOriginsByProject,
+  deriveAnonymousUserHash,
 } from "@replaybug/db";
 import {
   PROTOCOL_VERSION,
@@ -321,6 +322,7 @@ export async function ingestBatch(
   config: {
     maxRequestsPerMinute: number;
     maxEventsPerMinute: number;
+    userHmacSecret: string;
   },
 ): Promise<IngestResult> {
   const { projectId, keyPrefix, requestId } = context;
@@ -361,6 +363,22 @@ export async function ingestBatch(
     })),
   }) as BatchIngestRequest;
 
+  // Derive anonymous user hash if user_id is present in session
+  let anonymousUserHash: string | null = null;
+  const rawUserId = sanitizedBatch.session.user_id;
+  if (rawUserId) {
+    try {
+      anonymousUserHash = deriveAnonymousUserHash({
+        projectId,
+        rawUserId,
+        secret: config.userHmacSecret,
+      });
+    } catch (error) {
+      // Log but don't fail the request - we can still process without user hash
+      console.warn(`[Ingest] Failed to derive anonymous user hash: ${error}`);
+    }
+  }
+
   let accepted = 0;
   let duplicate = 0;
   let rejected = 0;
@@ -373,7 +391,7 @@ export async function ingestBatch(
         const telemetrySession = await upsertTelemetrySession(tx, {
           projectId,
           sdkSessionId: sanitizedBatch.session.sdk_session_id,
-          anonymousUserHash: null, // Will be set by server from setUser HMAC
+          anonymousUserHash,
           environment: sanitizedBatch.session.environment || "unknown",
           release: sanitizedBatch.session.release || null,
           initialUrl: sanitizedBatch.session.initial_url,

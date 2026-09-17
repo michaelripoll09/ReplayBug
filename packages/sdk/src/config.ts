@@ -165,6 +165,7 @@ export interface SessionMetadata {
   release?: string;
   environment?: string;
   tags?: Record<string, string>;
+  user_id?: string | undefined;
 }
 
 /**

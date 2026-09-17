@@ -21,6 +21,7 @@ const INGEST_ERROR_CODES = [
 
 export interface IngestRouteDeps {
   db: import("@replaybug/db").Database;
+  config: import("../config.js").ApiConfig;
 }
 
 const errorJson = {
@@ -171,6 +172,7 @@ export async function registerIngestRoutes(
           {
             maxRequestsPerMinute: 60,
             maxEventsPerMinute: 1000,
+            userHmacSecret: deps.config.userHmacSecret,
           },
         );
 

@@ -281,6 +281,8 @@ export const sessionMetadataSchema = z.object({
   release: z.string().max(128).optional(),
   environment: z.string().max(64).optional(),
   tags: z.record(z.string(), z.string().max(128)).optional(),
+  // Raw user ID from setUser({id}). Server derives HMAC hash and discards raw ID.
+  user_id: z.string().max(256).optional(),
 });
 
 export type SessionMetadata = z.infer<typeof sessionMetadataSchema>;

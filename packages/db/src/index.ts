@@ -32,10 +32,14 @@ export {
   parsePublicKey,
   hashPublicKey,
   verifyPublicKey,
+  deriveAnonymousUserHash,
   PUBLIC_KEY_PREFIX,
   PublicKeyError,
 } from "./keys-crypto.js";
-export type { ParsedPublicKey } from "./keys-crypto.js";
+export type {
+  ParsedPublicKey,
+  DeriveAnonymousUserHashInput,
+} from "./keys-crypto.js";
 export type {
   Database,
   DbTransaction,

@@ -185,7 +185,10 @@ export function setupNetworkCapture(
       (xhr as EventTarget).addEventListener("loadend", onLoadEnd);
     }
 
-    return originalXhrSend.call(this, body as Document | XMLHttpRequestBodyInit | null);
+    return originalXhrSend.call(
+      this,
+      body as Document | XMLHttpRequestBodyInit | null,
+    );
   };
 
   // Return cleanup function

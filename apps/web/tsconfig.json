@@ -1,0 +1,16 @@
+{
+  "extends": "@replaybug/config/nextjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "app",
+    "lib",
+    "next-env.d.ts",
+    "next.config.ts",
+    "postcss.config.mjs"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "extends": "@replaybug/config/browser.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "noEmit": true
+  },
+  "include": ["src", "vitest.config.ts"]
+}

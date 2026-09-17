@@ -1,0 +1,44 @@
+{
+  "name": "@replaybug/db",
+  "version": "0.1.0",
+  "description": "PostgreSQL client, Drizzle setup and health helpers for ReplayBug",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean --out-dir dist",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --sourcemap --watch --out-dir dist",
+    "lint": "eslint src drizzle.config.ts --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "pg": "8.23.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@replaybug/config": "workspace:*",
+    "@types/node": "22.20.3",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.10",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1"
+  }
+}

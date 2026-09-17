@@ -1,0 +1,7 @@
+{
+  "extends": "@replaybug/config/node.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["bin", "src", "vitest.config.ts"]
+}

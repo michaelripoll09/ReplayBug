@@ -1,0 +1,8 @@
+{
+  "extends": "@replaybug/config/packages.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "noEmit": true
+  },
+  "include": ["src", "drizzle.config.ts", "vitest.config.ts"]
+}

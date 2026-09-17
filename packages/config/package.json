@@ -1,0 +1,15 @@
+{
+  "name": "@replaybug/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared TypeScript configuration presets for ReplayBug workspaces",
+  "license": "MIT",
+  "files": [
+    "*.json"
+  ],
+  "scripts": {
+    "lint": "echo \"@replaybug/config: nothing to lint\"",
+    "typecheck": "echo \"@replaybug/config: nothing to typecheck\"",
+    "test": "echo \"@replaybug/config: nothing to test\""
+  }
+}

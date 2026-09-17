@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Vite
+apps/demo/dist/
+
+# Test outputs
+coverage/
+.nyc_output/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Drizzle artifacts (keep migrations, ignore local db state)
+*.db
+*.sqlite
+
+# Local artifact storage (future release artifacts live outside the repo)
+.artifacts/
+data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json

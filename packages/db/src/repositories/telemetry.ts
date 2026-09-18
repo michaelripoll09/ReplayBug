@@ -2,7 +2,6 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import {
   telemetrySessions,
   events,
-  eventProcessingOutbox,
   rateLimitBuckets,
   projectKeys,
   projectOrigins,
@@ -11,7 +10,6 @@ import type { DbOrTx } from "./db-types.js";
 
 export type TelemetrySessionRow = typeof telemetrySessions.$inferSelect;
 export type EventRow = typeof events.$inferSelect;
-export type OutboxRow = typeof eventProcessingOutbox.$inferSelect;
 export type RateLimitBucketRow = typeof rateLimitBuckets.$inferSelect;
 export type ProjectKeyRow = typeof projectKeys.$inferSelect;
 export type ProjectOriginRow = typeof projectOrigins.$inferSelect;
@@ -148,30 +146,6 @@ export async function insertEvent(
     .returning();
 
   return rows[0];
-}
-
-/**
- * Insert outbox row for an event (same transaction as event insert).
- */
-export async function insertOutbox(
-  db: DbOrTx,
-  eventId: string,
-): Promise<OutboxRow> {
-  const rows = await db
-    .insert(eventProcessingOutbox)
-    .values({
-      eventId,
-      dispatchedAt: null,
-      attemptCount: 0,
-      lastError: null,
-    })
-    .returning();
-
-  const row = rows[0];
-  if (row === undefined) {
-    throw new Error("Failed to insert outbox row");
-  }
-  return row;
 }
 
 /**

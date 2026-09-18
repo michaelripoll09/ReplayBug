@@ -19,6 +19,7 @@
     "db:seed": "tsx scripts/seed-dev.ts",
     "api:generate": "pnpm --filter @replaybug/api-client api:generate",
     "sdk:size": "node scripts/sdk-size.mjs",
+    "worker:latency": "tsx scripts/worker-latency-smoke.ts",
     "test:sdk": "pnpm --filter @replaybug/sdk test",
     "test:e2e": "pnpm --filter @replaybug/web test:e2e && pnpm --filter @replaybug/demo test:e2e"
   },

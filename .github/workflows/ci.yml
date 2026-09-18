@@ -84,6 +84,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Covers unit tests plus real-PostgreSQL integration suites:
+      # migrations (packages/db), ingest (apps/api) and the worker pipeline
+      # (apps/worker: pg-boss startup, outbox dispatch, event processing,
+      # issue grouping, concurrency, regression, retries, poison jobs).
       - run: pnpm test
 
   openapi-drift:

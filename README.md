@@ -4,11 +4,14 @@ Developer observability for reproducible bugs: privacy-safe browser failure
 context, grouped issues, session timelines, and Playwright reproduction
 tests — on a self-hostable stack with no paid services.
 
-> **Status: Block 3 dashboard.** Auth, tenancy, onboarding, dashboard shell,
-> environment/origin/key-rotation settings, typed OpenAPI client and Chromium
-> E2E exist with real PostgreSQL. Event ingest, SDK capture, issues, sessions,
-> timeline, Playwright generation, jobs, SSE, releases, source maps and
-> notifications are explicitly not built yet.
+> **Status: Block 5 worker and issue processing.** Auth, tenancy, onboarding,
+> dashboard shell, settings, typed OpenAPI client, Chromium E2E, the browser
+> SDK, public ingest, and the asynchronous processing pipeline (transactional
+> outbox → pg-boss → normalization → deterministic fingerprinting → issue
+> grouping → aggregates → regression handling → PostgreSQL NOTIFY) exist with
+> real PostgreSQL. Issue REST API/dashboard, session timeline, SSE, source
+> maps, releases, Playwright reproduction generation, retention cleanup and
+> Ollama analysis are explicitly not built yet.
 
 ## What exists today
 
@@ -35,36 +38,48 @@ tests — on a self-hostable stack with no paid services.
   projects (nested + by-id + transactional idempotent delete), environments,
   origins and public-key rotation with central RBAC (owner/admin/member/viewer)
   and audit logs
-- Worker lifecycle skeleton at `apps/worker` (validated config, PG check,
-  graceful shutdown, empty pg-boss job registry)
-- Vite + React smoke screen at `apps/demo` ("ReplayBug Demo App",
-  production source maps enabled)
-- Shared packages: `@replaybug/observability` (Pino), `@replaybug/contracts`
-  (Zod: health, meta, error envelope, user/workspace/project/env/origin/keys),
-  `@replaybug/db` (pg + Drizzle schema, migrations, repositories, origin parser,
-  key crypto), `@replaybug/sdk` (version metadata only), `@replaybug/cli`
-  (`replaybug --version/--help`), `@replaybug/api-client` (generated OpenAPI
-  client, see above), `@replaybug/ui` (`cn` + `Button`), `@replaybug/config`
-  (shared TS presets)
+- Browser SDK at `packages/sdk`: automatic exception, unhandled-rejection,
+  console-error and failed-request capture, navigation/click/input breadcrumbs,
+  privacy-safe defaults, batching, unload flush, retry, size budget
+- Public ingest at `apps/api` (`POST /api/ingest/v1/batch`): public-key auth,
+  exact origin matching, rate limits with atomic PostgreSQL counters,
+  server-side redaction, deterministic truncation, idempotency on
+  `(project_id, client_event_id)`, and one transaction per event writing
+  session + event + outbox row
+- Worker at `apps/worker`: validated config, PostgreSQL health check,
+  pg-boss lifecycle, `replaybug.process-event` consumer, transactional outbox
+  dispatcher (`FOR UPDATE SKIP LOCKED`), reconciliation loop, bounded retries,
+  poison-job visibility, graceful shutdown
+- Issue processing: deterministic fingerprinting (exception,
+  unhandled rejection, console error, network, message; custom override on
+  manual capture), issue grouping with `UNIQUE (project_id, fingerprint)`,
+  occurrence and distinct-session aggregates, first/last seen and
+  first/last release (out-of-order safe), regression reopen with activity and
+  assignee notification, ignored/investigating semantics, and
+  `pg_notify replaybug_project_updates`
 - Real Drizzle versioned migrations (`packages/db/drizzle`) and dev-only seed
   (`pnpm db:seed`: demo user/workspace/project/prod env/dev env/localhost origin)
 - PostgreSQL 17 via Docker Compose with healthcheck and persistent volume
-- GitHub Actions CI (format, lint, typecheck, tests with Postgres, OpenAPI
-  drift check, build, Playwright Chromium E2E)
+- GitHub Actions CI (format, lint, typecheck, tests with PostgreSQL, OpenAPI
+  drift check, build, Playwright Chromium E2E including the worker E2E)
 
 ## What is explicitly not built yet
 
-Telemetry ingest, real SDK capture, issue grouping, fingerprinting,
-functional pg-boss jobs, source maps, Playwright generator, SSE,
-notifications, comments, releases, Ollama analysis, invitations, GitHub OAuth,
-CLI secret tokens and public demo mode. No fake SDK snippets, metrics, charts
-or screenshots. See `` for the full plan.
+Issue REST API and dashboard views (list, detail, session timeline),
+assignment/comments/tags UI, SSE and dashboard realtime, release management
+and source maps, Playwright reproduction generator, retention cleanup,
+invitation cleanup, Ollama analysis, GitHub OAuth, CLI secret tokens and
+public demo mode. Fingerprinting runs on raw sanitized stacks until source
+maps exist, so minified frames group by minified location. No fake metrics,
+charts or screenshots. See `` for the full
+plan and `docs/architecture/worker.md` for what the worker does today.
 
 ## Stack
 
 Node.js 24, TypeScript (strict), pnpm workspaces, Turborepo, Next.js (App
 Router) + React + Tailwind CSS, Fastify + Zod, PostgreSQL 17, Drizzle ORM,
-pg-boss (structure only), Pino, Vitest, Vite. No Redis. No paid services.
+pg-boss (job queue on PostgreSQL), Pino, Vitest, Vite, Playwright. No Redis.
+No paid services.
 
 ## Requirements
 
@@ -79,10 +94,15 @@ pg-boss (structure only), Pino, Vitest, Vite. No Redis. No paid services.
 cp .env.example .env        # PowerShell: Copy-Item .env.example .env
 docker compose up -d postgres
 pnpm install
-pnpm db:migrate
+pnpm db:migrate             # needs REPLAYBUG_DATABASE_URL in the environment
 pnpm db:seed                # dev-only; DEMO/LOCAL ONLY creds, no telemetry data
 pnpm dev
 ```
+
+`pnpm dev` also starts the worker, so telemetry accepted by the demo app is
+processed into issues locally. Watch the worker logs for
+`process-event completed` lines. To inspect the pipeline manually:
+`pnpm --filter @replaybug/worker start` (after `pnpm build`).
 
 Auth runs locally with email/password (no OAuth, no paid services). Configure
 `REPLAYBUG_AUTH_SECRET` (min 32 chars), `REPLAYBUG_API_URL`,
@@ -126,9 +146,19 @@ pnpm typecheck
 pnpm test
 pnpm api:generate        # refresh OpenAPI + typed client (CI checks drift)
 pnpm build
+pnpm sdk:size            # SDK bundle size budget
 node packages/cli/bin/replaybug.js --version
-pnpm --filter @replaybug/web test:e2e   # Chromium E2E (needs PG + build)
+pnpm --filter @replaybug/web test:e2e   # dashboard Chromium E2E (needs PG + build)
+pnpm test:e2e            # web E2E + demo ingest E2E + demo worker E2E
+pnpm worker:latency      # reproducible processing-latency smoke (needs build + PG)
 ```
+
+`pnpm test` includes the worker integration suites (real PostgreSQL, real
+pg-boss): event→issue creation, grouping, concurrency, regression, retries,
+poison jobs, crash-window dedupe and worker restart. `pnpm test:e2e` runs the
+demo suite twice: ingest/privacy with the worker down (events stay pending and
+dispatched-safe) and the worker suite with the real worker process
+(browser → SDK → ingest → outbox → pg-boss → worker → issue).
 
 ## Monorepo structure
 
@@ -136,24 +166,27 @@ pnpm --filter @replaybug/web test:e2e   # Chromium E2E (needs PG + build)
 replaybug/
 ├─ apps/
 │  ├─ web/        # Next.js dashboard (auth/onboarding/shell/settings)
-│  ├─ api/        # Fastify health + meta + auth/tenancy API
-│  ├─ worker/     # Worker lifecycle skeleton (pg-boss registry stub)
-│  └─ demo/       # Vite smoke screen (source maps on)
+│  ├─ api/        # Fastify auth/tenancy API + public telemetry ingest
+│  ├─ worker/     # Outbox dispatcher, pg-boss consumer, issue processing
+│  └─ demo/       # Deliberately buggy Vite app + Chromium E2E suites
 ├─ packages/
-│  ├─ sdk/            # Browser SDK metadata only
+│  ├─ sdk/            # Browser SDK (capture, batching, privacy defaults)
 │  ├─ cli/            # replaybug --version/--help
-│  ├─ db/             # pg + Drizzle schema/migrations/repos/parsers
-│  ├─ contracts/      # Zod health/meta/error + tenancy DTOs
+│  ├─ db/             # pg + Drizzle schema/migrations/repos/fingerprinting
+│  ├─ contracts/      # Zod telemetry protocol + tenancy DTOs
 │  ├─ api-client/     # Generated OpenAPI client (openapi-fetch + types)
 │  ├─ ui/             # cn + Button (shadcn-compatible base)
 │  ├─ observability/  # Pino logger factory
 │  └─ config/         # Shared tsconfig presets
 ├─ docs/
+│  ├─ architecture.md            # architecture index
 │  ├─ architecture/tenancy.md
 │  ├─ architecture/frontend.md
+│  ├─ architecture/worker.md
+│  ├─ architecture/fingerprinting.md
 │  ├─ specs/replaybug-master-spec.md
 │  └─ adr/
-├─ scripts/           # seed-dev (dev-only tenancy seed)
+├─ scripts/           # seed-dev, worker-latency-smoke
 ├─ docker/
 ├─ .github/workflows/
 ├─ docker-compose.yml

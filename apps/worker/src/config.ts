@@ -2,17 +2,35 @@ import { z } from "zod";
 
 /**
  * Validated worker runtime configuration. Fails fast with a human-readable
- * message when required values are missing so misconfiguration surfaces at
- * startup instead of as a silent idle worker.
+ * message when required values are missing or out of safe bounds so
+ * misconfiguration surfaces at startup instead of as a silent idle worker.
+ *
+ * All values are parsed here; no other module reads process.env directly.
  */
 export const workerConfigSchema = z.object({
   nodeEnv: z.enum(["development", "test", "production"]).default("development"),
   environment: z.string().min(1).default("development"),
   databaseUrl: z.string().min(1, "REPLAYBUG_DATABASE_URL must not be empty"),
   logLevel: z.string().min(1).default("info"),
-  // pg-boss schema/table settings reserved for the future job wiring.
-  // Parsed now so operator mistakes fail fast even before jobs exist.
+  /** pg-boss-owned schema (tables are created/maintained by pg-boss itself). */
   bossSchema: z.string().min(1).default("pgboss"),
+  /** Concurrent process-event workers spawned per process. */
+  concurrency: z.coerce.number().int().min(1).max(64).default(2),
+  /** Outbox rows claimed per dispatch transaction. */
+  outboxBatchSize: z.coerce.number().int().min(1).max(1000).default(100),
+  /** Delay between outbox dispatch passes. */
+  outboxPollMs: z.coerce.number().int().min(100).max(60_000).default(1000),
+  /** Delay between outbox reconciliation passes. */
+  outboxReconcileMs: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(3_600_000)
+    .default(60_000),
+  /** pg-boss retries per process-event job (0 disables retries). */
+  jobRetryLimit: z.coerce.number().int().min(0).max(10).default(4),
+  /** pg-boss worker poll interval; 500 ms is the pg-boss minimum. */
+  jobPollMs: z.coerce.number().int().min(500).max(60_000).default(500),
 });
 
 export type WorkerConfig = z.infer<typeof workerConfigSchema>;
@@ -26,6 +44,12 @@ export function loadWorkerConfigFromEnv(
     databaseUrl: env["REPLAYBUG_DATABASE_URL"] ?? env["DATABASE_URL"],
     logLevel: env["LOG_LEVEL"],
     bossSchema: env["REPLAYBUG_PGBOSS_SCHEMA"],
+    concurrency: env["REPLAYBUG_WORKER_CONCURRENCY"],
+    outboxBatchSize: env["REPLAYBUG_OUTBOX_BATCH_SIZE"],
+    outboxPollMs: env["REPLAYBUG_OUTBOX_POLL_MS"],
+    outboxReconcileMs: env["REPLAYBUG_OUTBOX_RECONCILE_MS"],
+    jobRetryLimit: env["REPLAYBUG_JOB_RETRY_LIMIT"],
+    jobPollMs: env["REPLAYBUG_JOB_POLL_MS"],
   });
   if (!parsed.success) {
     const details = parsed.error.issues

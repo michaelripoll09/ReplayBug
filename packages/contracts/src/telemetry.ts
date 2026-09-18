@@ -103,6 +103,14 @@ export const exceptionValueSchema = z.object({
 export type ExceptionValue = z.infer<typeof exceptionValueSchema>;
 
 /**
+ * Bounds for developer-supplied custom fingerprints (grouping override on
+ * manual exception capture). Deliberately small: the override is a developer
+ * affordance, not a data channel.
+ */
+export const CUSTOM_FINGERPRINT_MAX_ITEMS = 5;
+export const CUSTOM_FINGERPRINT_MAX_ITEM_LENGTH = 256;
+
+/**
  * Exception event payload.
  */
 export const exceptionEventPayloadSchema = z.object({
@@ -113,6 +121,16 @@ export const exceptionEventPayloadSchema = z.object({
       handled: z.boolean(),
       data: z.record(z.string(), z.unknown()).optional(),
     })
+    .optional(),
+  /**
+   * Optional developer-supplied grouping override, only for manual capture
+   * (`captureException`). When present and valid it replaces the automatic
+   * fingerprint components; the project namespace still participates in the
+   * hash, so two projects never share a fingerprint.
+   */
+  fingerprint: z
+    .array(z.string().max(CUSTOM_FINGERPRINT_MAX_ITEM_LENGTH))
+    .max(CUSTOM_FINGERPRINT_MAX_ITEMS)
     .optional(),
 });
 

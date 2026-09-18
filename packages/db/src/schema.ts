@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -329,6 +330,176 @@ export const processingStateEnum = pgEnum("processing_state", [
 ]);
 
 /**
+ * Issue — a group of repeated failure events sharing one deterministic
+ * fingerprint.
+ *
+ * `fingerprint` is the SHA-256 grouping key (64 lowercase hex chars).
+ * `fingerprint_signature` keeps the canonical normalized signature the hash
+ * was derived from, so suspicious collisions stay diagnosable (master spec
+ * section 14.5). The signature never replaces the hash as the grouping key.
+ */
+export const issues = pgTable(
+  "issues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fingerprint: text("fingerprint").notNull(),
+    fingerprintSignature: text("fingerprint_signature").notNull(),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    normalizedMessage: text("normalized_message").notNull(),
+    status: text("status").notNull().default("open"),
+    severity: text("severity").notNull(),
+    assignedToUserId: text("assigned_to_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    firstRelease: text("first_release"),
+    lastRelease: text("last_release"),
+    occurrenceCount: integer("occurrence_count").notNull().default(0),
+    affectedSessionCount: integer("affected_session_count")
+      .notNull()
+      .default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("issues_project_fingerprint_unique").on(t.projectId, t.fingerprint),
+    index("issues_project_status_last_seen_idx").on(
+      t.projectId,
+      t.status,
+      t.lastSeenAt,
+    ),
+    index("issues_project_last_seen_idx").on(t.projectId, t.lastSeenAt),
+    index("issues_assigned_to_idx").on(t.assignedToUserId),
+    check(
+      "issues_status_check",
+      sql`${t.status} IN ('open','investigating','resolved','ignored')`,
+    ),
+    check("issues_severity_check", sql`${t.severity} IN ('error','warning')`),
+    check(
+      "issues_type_check",
+      sql`${t.type} IN ('exception','unhandled_rejection','console_error','network','message')`,
+    ),
+    check("issues_fingerprint_check", sql`${t.fingerprint} ~ '^[0-9a-f]{64}$'`),
+    check("issues_occurrence_count_check", sql`${t.occurrenceCount} >= 0`),
+    check(
+      "issues_affected_session_count_check",
+      sql`${t.affectedSessionCount} >= 0`,
+    ),
+  ],
+);
+
+/**
+ * Append-only issue timeline. Worker-generated rows carry a NULL actor.
+ * Historical rows are never updated.
+ */
+export const issueActivity = pgTable(
+  "issue_activity",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    type: text("type").notNull(),
+    metadataJson: jsonb("metadata_json")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("issue_activity_issue_created_idx").on(t.issueId, t.createdAt),
+    check(
+      "issue_activity_type_check",
+      sql`${t.type} IN ('created','assigned','unassigned','status_changed','comment_added','regression_detected','reproduction_generated','ai_analysis_requested','ai_analysis_completed','ai_analysis_failed')`,
+    ),
+  ],
+);
+
+/**
+ * Distinct telemetry sessions affected by an issue. The composite primary key
+ * makes "count distinct sessions" concurrency-safe: `issues.affected_session_count`
+ * only increments when this insert actually adds a new relation.
+ */
+export const issueAffectedSessions = pgTable(
+  "issue_affected_sessions",
+  {
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    telemetrySessionId: uuid("telemetry_session_id")
+      .notNull()
+      .references(() => telemetrySessions.id, { onDelete: "cascade" }),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: "issue_affected_sessions_pk",
+      columns: [t.issueId, t.telemetrySessionId],
+    }),
+    index("issue_affected_sessions_issue_idx").on(t.issueId),
+  ],
+);
+
+/**
+ * In-app notifications foundation. Only `issue_regression` is produced today;
+ * the check mirrors the master spec's notification catalogue so later blocks
+ * add behavior without a constraint migration. No email, no push, no external
+ * delivery is involved.
+ */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    issueId: uuid("issue_id").references(() => issues.id, {
+      onDelete: "cascade",
+    }),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("notifications_user_read_created_idx").on(
+      t.userId,
+      t.readAt,
+      t.createdAt,
+    ),
+    check(
+      "notifications_type_check",
+      sql`${t.type} IN ('issue_assigned','issue_comment_mention','issue_regression','reproduction_failed','ai_analysis_completed','ai_analysis_failed')`,
+    ),
+  ],
+);
+
+/**
  * Telemetry events — core fact table.
  * Unique constraint on (project_id, client_event_id) provides idempotency.
  */
@@ -353,6 +524,10 @@ export const events = pgTable(
     release: text("release"),
     pageUrl: text("page_url"),
     payloadJson: jsonb("payload_json").notNull(),
+    fingerprint: text("fingerprint"),
+    issueId: uuid("issue_id").references(() => issues.id, {
+      onDelete: "set null",
+    }),
     processingState: processingStateEnum("processing_state")
       .notNull()
       .default("pending"),
@@ -369,6 +544,7 @@ export const events = pgTable(
       t.sequenceNumber,
     ),
     index("events_project_state_idx").on(t.projectId, t.processingState),
+    index("events_issue_occurred_idx").on(t.issueId, t.occurredAt),
     check(
       "events_event_type_check",
       sql`${t.eventType} IN ('exception','unhandled_rejection','console_error','network','navigation','click','input','message','custom_breadcrumb','sdk')`,
@@ -377,12 +553,19 @@ export const events = pgTable(
       "events_processing_state_check",
       sql`${t.processingState} IN ('pending','processed','rejected')`,
     ),
+    check(
+      "events_fingerprint_check",
+      sql`${t.fingerprint} IS NULL OR ${t.fingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
   ],
 );
 
 /**
  * Event processing outbox — ensures accepted events are eventually processed.
  * One row per event, inserted in the same transaction as the event.
+ *
+ * `dispatched_at` means "durably handed to pg-boss", NOT "processed".
+ * Final processing state lives on `events.processing_state`.
  */
 export const eventProcessingOutbox = pgTable(
   "event_processing_outbox",
@@ -393,8 +576,17 @@ export const eventProcessingOutbox = pgTable(
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     attemptCount: integer("attempt_count").notNull().default(0),
     lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
-  (t) => [index("event_processing_outbox_dispatched_idx").on(t.dispatchedAt)],
+  (t) => [
+    index("event_processing_outbox_dispatched_idx").on(t.dispatchedAt),
+    index("event_processing_outbox_pending_created_idx").on(
+      t.dispatchedAt,
+      t.createdAt,
+    ),
+  ],
 );
 
 /**
@@ -436,6 +628,10 @@ export const schema = {
   projectKeys,
   auditLogs,
   telemetrySessions,
+  issues,
+  issueActivity,
+  issueAffectedSessions,
+  notifications,
   events,
   eventProcessingOutbox,
   rateLimitBuckets,

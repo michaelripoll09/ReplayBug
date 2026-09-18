@@ -32,7 +32,9 @@ async function main() {
   try {
     await pool.query(`
       TRUNCATE "user", "session", "account", "verification",
-        "audit_logs", "event_processing_outbox", "events",
+        "audit_logs", "notifications", "issue_activity",
+        "issue_affected_sessions", "issues",
+        "event_processing_outbox", "events",
         "rate_limit_buckets", "telemetry_sessions",
         "project_keys", "project_origins", "project_environments",
         "projects", "workspace_memberships", "workspaces"

@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { SDK_NAME, SDK_PROTOCOL_VERSION, SDK_VERSION, init } from "./index.js";
-import { parseDsn } from "./config.js";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  SDK_NAME,
+  SDK_PROTOCOL_VERSION,
+  SDK_VERSION,
+  captureException,
+  init,
+} from "./index.js";
+import { parseDsn, type ClientEvent } from "./config.js";
 
 describe("@replaybug/sdk foundation metadata", () => {
   it("exposes a semver SDK version", () => {
@@ -44,5 +50,75 @@ describe("parseDsn", () => {
     expect(() => parseDsn("https://example.com/api/ingest/v1")).toThrow(
       /public key/,
     );
+  });
+});
+
+describe("custom fingerprint on manual capture", () => {
+  const captured: ClientEvent[] = [];
+
+  beforeAll(() => {
+    init({
+      dsn: "http://rb_pk_test_key@localhost:4001/api/ingest/v1",
+      debug: false,
+      beforeSend: (event) => {
+        captured.push(event);
+        return null;
+      },
+    });
+  });
+
+  beforeEach(() => {
+    captured.length = 0;
+  });
+
+  function exceptionPayloadOfLastEvent(): Record<string, unknown> {
+    const exception = captured.find(
+      (event) => event.event_type === "exception",
+    );
+    expect(exception).toBeDefined();
+    return exception?.payload as Record<string, unknown>;
+  }
+
+  it("attaches a trimmed, bounded fingerprint array", () => {
+    captureException(new Error("boom"), { scenario: "test" }, [
+      "checkout",
+      "payment  step",
+      "",
+      "x".repeat(400),
+      "fifth",
+      "sixth",
+    ]);
+    const payload = exceptionPayloadOfLastEvent();
+    expect(payload["fingerprint"]).toEqual([
+      "checkout",
+      "payment step",
+      "x".repeat(256),
+      "fifth",
+      "sixth",
+    ]);
+  });
+
+  it("omits the fingerprint when nothing usable remains", () => {
+    captureException(new Error("boom"), undefined, ["", "   "]);
+    const payload = exceptionPayloadOfLastEvent();
+    expect(payload["fingerprint"]).toBeUndefined();
+  });
+
+  it("keeps automatic grouping when no fingerprint is provided", () => {
+    captureException(new Error("boom"));
+    const payload = exceptionPayloadOfLastEvent();
+    expect(payload["fingerprint"]).toBeUndefined();
+    const values = payload["values"] as Array<Record<string, unknown>>;
+    expect(values[0]?.["value"]).toBe("boom");
+  });
+
+  it("redacts secrets inside custom fingerprint items", () => {
+    captureException(new Error("boom"), undefined, [
+      "api_key=abcdefghijklmnopqrst",
+    ]);
+    const payload = exceptionPayloadOfLastEvent();
+    const fingerprint = payload["fingerprint"] as string[];
+    expect(fingerprint[0]).toContain("[REDACTED]");
+    expect(fingerprint[0]).not.toContain("abcdefghijklmnopqrst");
   });
 });

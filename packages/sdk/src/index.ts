@@ -1,4 +1,9 @@
-import { PROTOCOL_VERSION, TELEMETRY_LIMITS } from "@replaybug/contracts";
+import {
+  CUSTOM_FINGERPRINT_MAX_ITEMS,
+  CUSTOM_FINGERPRINT_MAX_ITEM_LENGTH,
+  PROTOCOL_VERSION,
+  TELEMETRY_LIMITS,
+} from "@replaybug/contracts";
 import { SDK_VERSION, SDK_NAME, SDK_PROTOCOL_VERSION } from "./version.js";
 import {
   parseDsn,
@@ -314,10 +319,20 @@ export class ReplayBug {
 
   /**
    * Public API: captureException
+   *
+   * `fingerprint` is an optional developer-supplied grouping override for
+   * manual capture only. When provided and usable it becomes the issue
+   * fingerprint (within the project namespace); automatic grouping is used
+   * otherwise. It is sanitized and bounded before it leaves the browser.
    */
-  captureException(error: Error, context?: Record<string, unknown>): string {
+  captureException(
+    error: Error,
+    context?: Record<string, unknown>,
+    fingerprint?: readonly string[],
+  ): string {
     const eventId = generateUuid();
-    const payload = {
+    const customFingerprint = normalizeCustomFingerprintInput(fingerprint);
+    const payload: Record<string, unknown> = {
       values: [
         {
           type: error.name,
@@ -329,6 +344,9 @@ export class ReplayBug {
         },
       ],
     };
+    if (customFingerprint.length > 0) {
+      payload["fingerprint"] = customFingerprint;
+    }
     const event = this.createEvent("exception", payload, context);
     this.sendEvent(event);
     return eventId;
@@ -568,6 +586,35 @@ function parseStackFrames(stack: string): Array<Record<string, unknown>> {
 }
 
 /**
+ * Bounds and sanitizes a custom fingerprint before it is attached to an
+ * exception payload. Empty entries are dropped; when nothing usable remains
+ * the payload carries no fingerprint and the server uses automatic grouping.
+ */
+function normalizeCustomFingerprintInput(values?: readonly string[]): string[] {
+  if (!values || values.length === 0) {
+    return [];
+  }
+  const cleaned: string[] = [];
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const bounded = sanitizeString(value)
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, CUSTOM_FINGERPRINT_MAX_ITEM_LENGTH);
+    if (bounded === "") {
+      continue;
+    }
+    cleaned.push(bounded);
+    if (cleaned.length >= CUSTOM_FINGERPRINT_MAX_ITEMS) {
+      break;
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Singleton instance
  */
 let instance: ReplayBug | null = null;
@@ -591,12 +638,16 @@ export function init(options: ReplayBugOptions): void {
 
 /**
  * Capture an exception (singleton)
+ *
+ * The optional `fingerprint` overrides automatic grouping for this manual
+ * capture. See `ReplayBug.captureException`.
  */
 export function captureException(
   error: Error,
   context?: Record<string, unknown>,
+  fingerprint?: readonly string[],
 ): string {
-  return getInstance().captureException(error, context);
+  return getInstance().captureException(error, context, fingerprint);
 }
 
 /**

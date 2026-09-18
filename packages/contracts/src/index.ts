@@ -76,6 +76,8 @@ export {
   PROTOCOL_VERSION,
   SENSITIVE_URL_PARAMS,
   TELEMETRY_LIMITS,
+  CUSTOM_FINGERPRINT_MAX_ITEMS,
+  CUSTOM_FINGERPRINT_MAX_ITEM_LENGTH,
   eventTypeSchema,
   stackFrameSchema,
   exceptionValueSchema,

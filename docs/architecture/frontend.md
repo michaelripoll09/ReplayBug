@@ -61,8 +61,12 @@ requireServerSession();
 - `createReplayBugApiClient({ baseUrl, fetch })` wraps `openapi-fetch` with
   `credentials: include` and `unwrap()` which throws a normalized `ApiError`
   preserving `{code,message,requestId,details}` with a safe fallback.
-- CI drift check: `pnpm api:generate` + `git diff --exit-code` on both
-  generated files.
+- The generator is self-contained: `pnpm api:generate` prepares the
+  workspace dependency closure (`^build`) before executing, so it works from
+  a clean checkout with no prebuilt `dist/`, no database, and no HTTP
+  server.
+- CI drift check: `pnpm api:check` (`api:generate` + `git diff --exit-code`
+  on both generated files).
 - OpenAPI paths: `/api/v1/me`, `/api/v1/workspaces`, `/api/v1/workspaces/:id`,
   `/api/v1/workspaces/:workspaceId/projects`, `/api/v1/projects/:id`,
   `/api/v1/projects/:projectId/environments`, `/api/v1/environments/:id`,

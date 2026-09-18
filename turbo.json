@@ -19,6 +19,10 @@
     },
     "test": {
       "dependsOn": ["^build"]
+    },
+    "api:generate": {
+      "dependsOn": ["^build"],
+      "cache": false
     }
   }
 }

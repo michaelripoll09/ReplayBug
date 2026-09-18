@@ -38,10 +38,13 @@ tests — on a self-hostable stack with no paid services.
   generation, AI panels, or source-mapped frames exist yet — none are
   shown. See `docs/architecture/dashboard.md` and
   `docs/architecture/realtime.md`.
-- Typed dashboard client at `packages/api-client`: `pnpm api:generate` builds
-  Fastify in-process, writes `openapi/openapi.json` + `src/schema.d.ts`,
-  `createReplayBugApiClient({ baseUrl, fetch })` with `credentials: include`
-  and `{code,message,requestId,details}` normalization. CI fails on drift.
+- Typed dashboard client at `packages/api-client`: `pnpm api:generate`
+  prepares its workspace build closure (`turbo` `^build`), builds Fastify
+  in-process, writes `openapi/openapi.json` + `src/schema.d.ts`; it is
+  fresh-checkout safe (no pre-build, no database, no HTTP server).
+  `createReplayBugApiClient({ baseUrl, fetch })` uses `credentials: include`
+  with `{code,message,requestId,details}` normalization. `pnpm api:check`
+  regenerates and fails on drift; CI runs it.
 - Fastify API at `apps/api` with `GET /health/live`, `GET /health/ready`
   (PostgreSQL check), `GET /api/v1/meta`, request IDs, contracts-based
   error envelope, and OpenAPI docs in non-production (`/docs`)
@@ -157,7 +160,8 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm api:generate        # refresh OpenAPI + typed client (CI checks drift)
+pnpm api:generate        # refresh OpenAPI + typed client (builds its dep closure)
+pnpm api:check           # regenerate + fail on drift (what CI runs)
 pnpm build
 pnpm sdk:size            # SDK bundle size budget
 node packages/cli/bin/replaybug.js --version
@@ -165,6 +169,11 @@ pnpm --filter @replaybug/web test:e2e   # dashboard Chromium E2E (needs PG + bui
 pnpm test:e2e            # web E2E + demo ingest E2E + demo worker E2E
 pnpm worker:latency      # reproducible processing-latency smoke (needs build + PG)
 ```
+
+`pnpm api:generate` is self-contained: it prepares the workspace dependency
+closure before generating, so a fresh checkout only needs
+`pnpm install --frozen-lockfile` first — no `pnpm build`, no database, no
+HTTP server.
 
 `pnpm test` includes the worker integration suites (real PostgreSQL, real
 pg-boss): event→issue creation, grouping, concurrency, regression, retries,

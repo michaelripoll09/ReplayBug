@@ -103,8 +103,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm api:generate
-      - run: git diff --exit-code -- packages/api-client/openapi/openapi.json packages/api-client/src/schema.d.ts
+      # api:generate prepares its own workspace build closure (Turbo ^build),
+      # so this is safe on a clean checkout with no prebuilt dist/.
+      - run: pnpm api:check
 
   build:
     name: build

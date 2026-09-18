@@ -20,6 +20,9 @@ coverage/
 test-results/
 playwright-report/
 
+# E2E runtime fixtures (contain per-run DSNs, never commit)
+.e2e/
+
 # Environment
 .env
 .env.local

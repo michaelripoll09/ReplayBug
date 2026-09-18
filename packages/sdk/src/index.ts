@@ -25,6 +25,7 @@ import { createEventQueue, type EventQueue } from "./queue.js";
 import { setupNetworkCapture } from "./autoCapture.js";
 import { setupClickCapture } from "./autoCapture.js";
 import { setupNavigationCapture } from "./autoCapture.js";
+import { setupInputCapture } from "./autoCapture.js";
 import { setupErrorCapture } from "./errorCapture.js";
 
 /**
@@ -42,6 +43,7 @@ export class ReplayBug {
   private queue: EventQueue | null = null;
   private transport: Transport | null = null;
   private cleanupFns: (() => void)[] = [];
+  private closing: Promise<void> | null = null;
 
   constructor() {
     this.state = {
@@ -74,6 +76,23 @@ export class ReplayBug {
    */
   init(options: ReplayBugOptions): void {
     if (this.state.initialized) {
+      if (this.closing !== null) {
+        // A close is in flight. This happens with React StrictMode remounts
+        // (effect cleanup closes the SDK, the remounted effect calls init
+        // again while close is still settling). Queue the re-initialization
+        // after the close completes so the SDK never ends up permanently
+        // dead while the host application keeps running.
+        this.debug(
+          "init() during close: re-initializing after close completes",
+        );
+        const pending = this.closing;
+        void pending
+          .catch(() => undefined)
+          .then(() => {
+            this.init(options);
+          });
+        return;
+      }
       this.debug("init() called on already initialized SDK, ignoring");
       return;
     }
@@ -119,8 +138,18 @@ export class ReplayBug {
     );
     this.state.transport = this.transport;
 
-    // Create queue
-    this.queue = createEventQueue(this.transport, {
+    // Create queue. The transport is wrapped so every batch carries the real
+    // session metadata (the queue itself only knows a static placeholder).
+    const sessionTransport: Transport = {
+      send: (batch) =>
+        this.transport!.send({
+          ...batch,
+          session: this.buildSessionMetadata(),
+        }),
+      close: () => this.transport!.close(),
+    };
+
+    this.queue = createEventQueue(sessionTransport, {
       debug: mergedOptions.debug,
       onDebug: (msg) => this.debug(msg),
     });
@@ -154,12 +183,18 @@ export class ReplayBug {
   private setupAutoCapture(): void {
     const opts = this.state.options;
 
-    // Network capture
+    // Network capture. Error-level failures (>=500, network errors) are sent
+    // as first-class network events; client errors (4xx) stay breadcrumb-only.
     if (opts.captureFailedRequests) {
       const cleanup = setupNetworkCapture(this.state, {
         captureFailedRequests: true,
         denyUrls: opts.denyUrls,
-        onNetworkEvent: (breadcrumb) => this.addBreadcrumbInternal(breadcrumb),
+        onNetworkEvent: (breadcrumb) => {
+          this.addBreadcrumbInternal(breadcrumb);
+          if (breadcrumb.level === "error") {
+            this.sendEvent(this.createEvent("network", breadcrumb.data ?? {}));
+          }
+        },
       });
       this.cleanupFns.push(cleanup);
     }
@@ -168,7 +203,10 @@ export class ReplayBug {
     if (opts.captureClicks) {
       const cleanup = setupClickCapture(this.state, {
         captureClicks: true,
-        onClickEvent: (breadcrumb) => this.addBreadcrumbInternal(breadcrumb),
+        onClickEvent: (breadcrumb) => {
+          this.addBreadcrumbInternal(breadcrumb);
+          this.sendEvent(this.createEvent("click", breadcrumb.data ?? {}));
+        },
       });
       this.cleanupFns.push(cleanup);
     }
@@ -177,8 +215,24 @@ export class ReplayBug {
     if (opts.captureNavigation) {
       const cleanup = setupNavigationCapture(this.state, {
         captureNavigation: true,
-        onNavigationEvent: (breadcrumb) =>
-          this.addBreadcrumbInternal(breadcrumb),
+        onNavigationEvent: (breadcrumb) => {
+          this.addBreadcrumbInternal(breadcrumb);
+          this.sendEvent(this.createEvent("navigation", breadcrumb.data ?? {}));
+        },
+      });
+      this.cleanupFns.push(cleanup);
+    }
+
+    // Input capture (opt-in). The interaction becomes a first-class event so
+    // the persisted timeline can include safe input interactions.
+    if (opts.captureSafeInputs) {
+      const cleanup = setupInputCapture(this.state, {
+        captureSafeInputs: true,
+        safeInputSelectors: opts.safeInputSelectors,
+        onInputEvent: (breadcrumb) => {
+          this.addBreadcrumbInternal(breadcrumb);
+          this.sendEvent(this.createEvent("input", breadcrumb.data ?? {}));
+        },
       });
       this.cleanupFns.push(cleanup);
     }
@@ -362,14 +416,33 @@ export class ReplayBug {
    */
   async close(): Promise<void> {
     if (!this.state.initialized) return;
+    if (this.closing !== null) {
+      // A close is already in flight; await the same promise.
+      return this.closing;
+    }
 
+    const pending = this.performClose().finally(() => {
+      this.closing = null;
+    });
+    this.closing = pending;
+    return pending;
+  }
+
+  private async performClose(): Promise<void> {
     // Remove unload handler
     if (this.state.unloadHandler && typeof window !== "undefined") {
       window.removeEventListener("beforeunload", this.state.unloadHandler);
     }
 
-    // Flush remaining events
-    await this.flush(5000);
+    // Flush remaining events (best-effort: a failing drain must never make
+    // shutdown throw into the host application).
+    try {
+      await this.flush(5000);
+    } catch (error) {
+      this.debug(
+        `Final flush failed during close: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     // Run cleanup functions
     for (const cleanup of this.cleanupFns) {

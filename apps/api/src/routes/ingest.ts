@@ -56,7 +56,10 @@ const batchRequestJson = {
     "events",
   ],
   properties: {
-    protocol_version: { type: "integer", const: 1 },
+    // Version is validated by the service so the caller receives the
+    // protocol-level UNSUPPORTED_PROTOCOL_VERSION code instead of a
+    // generic JSON-schema validation error.
+    protocol_version: { type: "integer" },
     sdk_name: { type: "string" },
     sdk_version: { type: "string" },
     session: { type: "object" },
@@ -67,28 +70,31 @@ const batchRequestJson = {
 /**
  * Ingest route: POST /api/ingest/v1/batch
  * Separate namespace from dashboard API with its own CORS and auth.
+ *
+ * The dashboard CORS plugin (credentials: true) is explicitly disabled for
+ * these routes. The ingest namespace answers its own credential-less CORS:
+ * preflight is generic (the browser has not sent the key yet), and the POST
+ * only receives read permission after the origin is validated against the
+ * key's project, so unconfigured origins never get a readable response.
  */
 export async function registerIngestRoutes(
   app: AppInstance,
   deps: IngestRouteDeps,
 ): Promise<void> {
-  // Ingest-specific CORS: no credentials, specific headers
-  await app.register(async (fastify) => {
-    fastify.addHook("onRequest", async (request, reply) => {
-      // CORS headers for ingest endpoint
-      reply.header("Access-Control-Allow-Origin", "*"); // Will be validated by origin check
+  app.options(
+    "/api/ingest/v1/batch",
+    { config: { cors: false } },
+    async (_request, reply) => {
+      reply.header("Access-Control-Allow-Origin", "*");
       reply.header("Access-Control-Allow-Methods", "POST, OPTIONS");
       reply.header(
         "Access-Control-Allow-Headers",
         "Content-Type, X-ReplayBug-Key",
       );
       reply.header("Access-Control-Max-Age", "86400");
-
-      if (request.method === "OPTIONS") {
-        return reply.status(204).send();
-      }
-    });
-  });
+      return reply.status(204).send();
+    },
+  );
 
   app.post(
     "/api/ingest/v1/batch",
@@ -105,8 +111,12 @@ export async function registerIngestRoutes(
         },
       },
       config: {
-        // Increase body limit for batch ingest
-        bodyLimit: 1024 * 1024, // 1 MB (we enforce 512 KB in code)
+        // Disable the dashboard CORS plugin for this route; ingest manages
+        // its own credential-less CORS headers.
+        cors: false,
+        // Hard transport-level cap at the configured ingest body limit. The
+        // error handler maps Fastify's overflow error to PAYLOAD_TOO_LARGE.
+        bodyLimit: deps.config.ingestMaxBodyBytes,
       },
     },
     async (request, reply) => {
@@ -161,8 +171,16 @@ export async function registerIngestRoutes(
           );
         }
 
+        // Origin validated: grant CORS read permission for this request and
+        // every subsequent outcome (rate limit, payload errors, success).
+        reply.header("Access-Control-Allow-Origin", "*");
+
         // Validate and parse batch request
-        const batch = validateBatchRequest(request.body, requestId);
+        const batch = validateBatchRequest(request.body, requestId, {
+          maxBatchEvents: deps.config.ingestMaxBatchEvents,
+          maxEventBytes: deps.config.ingestMaxEventBytes,
+          maxBodyBytes: deps.config.ingestMaxBodyBytes,
+        });
 
         // Ingest batch
         const result = await ingestBatch(
@@ -170,8 +188,8 @@ export async function registerIngestRoutes(
           { projectId, keyPrefix: keyInfo.prefix, requestId },
           batch,
           {
-            maxRequestsPerMinute: 60,
-            maxEventsPerMinute: 1000,
+            maxRequestsPerMinute: deps.config.ingestRateLimitRequestsPerMinute,
+            maxEventsPerMinute: deps.config.ingestRateLimitEventsPerMinute,
             userHmacSecret: deps.config.userHmacSecret,
           },
         );

@@ -41,11 +41,12 @@ export function createTestDbClient(): DbClient {
   });
 }
 
-/** Truncate all domain + auth tables. FK-safe via CASCADE. */
+/** Truncate all domain + auth + telemetry tables. FK-safe via CASCADE. */
 export async function resetTestDatabase(client: DbClient): Promise<void> {
   await client.pool.query(`
     TRUNCATE "user", "session", "account", "verification",
-      "audit_logs", "project_keys", "project_origins",
+      "audit_logs", "event_processing_outbox", "events", "rate_limit_buckets",
+      "telemetry_sessions", "project_keys", "project_origins",
       "project_environments", "projects",
       "workspace_memberships", "workspaces"
     RESTART IDENTITY CASCADE

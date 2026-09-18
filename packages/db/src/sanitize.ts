@@ -190,11 +190,22 @@ export function isSensitiveKey(key: string): boolean {
 }
 
 /**
+ * Extract URLs from a string and sanitize them.
+ * Used by redactSecrets to handle strings that contain URLs.
+ */
+function sanitizeUrlsInString(input: string): string {
+  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
+  return input.replace(urlRegex, (url) => sanitizeUrl(url));
+}
+
+/**
  * Redact secrets from any string (used for event payloads).
  * This is the main entry point for server-side redaction.
+ * Handles both pure URLs and strings containing URLs.
  */
 export function redactSecrets(input: string): string {
-  return sanitizeString(sanitizeUrl(input));
+  // First sanitize any embedded URLs, then apply string-pattern redaction.
+  return sanitizeString(sanitizeUrlsInString(input));
 }
 
 /**
@@ -221,15 +232,69 @@ export function truncateToBytes(input: string, maxBytes: number): string {
 }
 
 /**
- * Sanitize event payload to size limits.
+ * Truncate stack frames inside a Sentry-style `values` array to the
+ * contract maximum (ExceptionEventPayload.values[].stacktrace.frames).
+ */
+function truncateFramesInValues(values: unknown): void {
+  if (!Array.isArray(values)) return;
+  for (const value of values) {
+    if (!value || typeof value !== "object") continue;
+    const stacktrace = (value as Record<string, unknown>)["stacktrace"];
+    if (!stacktrace || typeof stacktrace !== "object") continue;
+    const frames = (stacktrace as Record<string, unknown>)["frames"];
+    if (
+      Array.isArray(frames) &&
+      frames.length > TELEMETRY_LIMITS.MAX_STACK_FRAMES
+    ) {
+      (stacktrace as Record<string, unknown>)["frames"] = frames.slice(
+        0,
+        TELEMETRY_LIMITS.MAX_STACK_FRAMES,
+      );
+    }
+  }
+}
+
+/**
+ * Recursively redact a payload value (server-side defense in depth).
+ * - Sensitive keys are fully replaced with [REDACTED].
+ * - String values are redacted for embedded URL params and secret patterns.
+ * - Recursion is depth-bounded by the shared context depth limit.
+ */
+function sanitizePayloadValue(value: unknown, depth: number): unknown {
+  if (depth > TELEMETRY_LIMITS.MAX_CONTEXT_DEPTH) {
+    return { "[truncated]": "max_depth_exceeded" };
+  }
+  if (typeof value === "string") {
+    return redactSecrets(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizePayloadValue(item, depth + 1));
+  }
+  if (typeof value === "object" && value !== null) {
+    const result: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      if (isSensitiveKey(key)) {
+        result[key] = REDACTED;
+        continue;
+      }
+      result[key] = sanitizePayloadValue(nested, depth + 1);
+    }
+    return result;
+  }
+  return value;
+}
+
+/**
+ * Sanitize event payload to size limits and redact secrets.
+ * Runs on every ingested payload, including ones from hostile clients.
  */
 export function sanitizeEventPayload(
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
-  const result = { ...payload };
+  const result = sanitizePayloadValue(payload, 0) as Record<string, unknown>;
 
   // Truncate message-like fields
-  for (const key of ["message", "value", "reason", "args"]) {
+  for (const key of ["message", "value", "reason"]) {
     if (typeof result[key] === "string") {
       result[key] = truncateToBytes(
         result[key] as string,
@@ -238,31 +303,22 @@ export function sanitizeEventPayload(
     }
   }
 
-  // Truncate stack frames
+  // console_error args is an array of strings
+  if (Array.isArray(result["args"])) {
+    result["args"] = (result["args"] as unknown[]).map((arg) =>
+      typeof arg === "string"
+        ? truncateToBytes(arg, TELEMETRY_LIMITS.MAX_MESSAGE_LENGTH)
+        : arg,
+    );
+  }
+
+  // Truncate stack frames (contract shape: values[].stacktrace.frames)
+  truncateFramesInValues(result["values"]);
+
+  // Legacy nested shape kept for compatibility
   if (result.payload && typeof result.payload === "object") {
-    const payload = result.payload as Record<string, unknown>;
-    if (payload.values && Array.isArray(payload.values)) {
-      for (const value of payload.values) {
-        if (
-          value &&
-          typeof value === "object" &&
-          "stacktrace" in value &&
-          value.stacktrace &&
-          typeof value.stacktrace === "object" &&
-          "frames" in value.stacktrace &&
-          Array.isArray(value.stacktrace.frames)
-        ) {
-          if (
-            value.stacktrace.frames.length > TELEMETRY_LIMITS.MAX_STACK_FRAMES
-          ) {
-            value.stacktrace.frames = value.stacktrace.frames.slice(
-              0,
-              TELEMETRY_LIMITS.MAX_STACK_FRAMES,
-            );
-          }
-        }
-      }
-    }
+    const legacy = result.payload as Record<string, unknown>;
+    truncateFramesInValues(legacy["values"]);
   }
 
   return result;
@@ -282,6 +338,11 @@ export function sanitizeBatchRequest(
         const e = event as Record<string, unknown>;
         return {
           ...e,
+          // Keep only the most recent breadcrumbs, matching the client-side
+          // ring buffer semantics and the contract maximum.
+          breadcrumbs: Array.isArray(e.breadcrumbs)
+            ? e.breadcrumbs.slice(-TELEMETRY_LIMITS.MAX_BREADCRUMBS)
+            : e.breadcrumbs,
           context: e.context
             ? sanitizeContext(e.context as Record<string, unknown>)
             : undefined,

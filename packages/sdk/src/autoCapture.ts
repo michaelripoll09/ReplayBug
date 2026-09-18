@@ -1,4 +1,9 @@
-import { sanitizeUrl, sanitizeLocatorText } from "./sanitize.js";
+import {
+  sanitizeUrl,
+  sanitizeLocatorText,
+  isSensitiveInput,
+  sanitizeString,
+} from "./sanitize.js";
 import { nowIso, type Breadcrumb } from "./config.js";
 import type { SdkState } from "./config.js";
 import { createBreadcrumb } from "./breadcrumbs.js";
@@ -10,6 +15,21 @@ export interface NetworkCaptureConfig {
   captureFailedRequests: boolean;
   denyUrls: string[];
   onNetworkEvent: (breadcrumb: Breadcrumb) => void;
+}
+
+/**
+ * Resolve a request URL to an absolute URL for telemetry.
+ * Relative URLs are resolved against the current page; if resolution fails
+ * the original value is returned and the sanitizer handles it.
+ */
+function resolveForTelemetry(url: string): string {
+  try {
+    const base =
+      typeof window !== "undefined" ? window.location.href : undefined;
+    return new URL(url, base).toString();
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -33,6 +53,7 @@ export function setupNetworkCapture(
         : input instanceof URL
           ? input.toString()
           : input.url;
+    const telemetryUrl = resolveForTelemetry(url);
     const method = (init?.method || "GET").toUpperCase();
     const startedAt = nowIso();
     const requestStart = performance.now();
@@ -59,10 +80,10 @@ export function setupNetworkCapture(
 
       if (config.captureFailedRequests === true && (isError || isClientError)) {
         const breadcrumb = createBreadcrumb("network", {
-          message: `${method} ${sanitizeUrl(url)} ${statusCode}`,
+          message: `${method} ${sanitizeUrl(telemetryUrl)} ${statusCode}`,
           level: isError ? "error" : "warning",
           data: {
-            url: sanitizeUrl(url),
+            url: sanitizeUrl(telemetryUrl),
             method,
             status_code: statusCode,
             duration_ms: durationMs,
@@ -80,10 +101,10 @@ export function setupNetworkCapture(
 
       if (config.captureFailedRequests) {
         const breadcrumb = createBreadcrumb("network", {
-          message: `${method} ${sanitizeUrl(url)} failed`,
+          message: `${method} ${sanitizeUrl(telemetryUrl)} failed`,
           level: "error",
           data: {
-            url: sanitizeUrl(url),
+            url: sanitizeUrl(telemetryUrl),
             method,
             status_code: null,
             duration_ms: durationMs,
@@ -136,6 +157,7 @@ export function setupNetworkCapture(
     };
 
     const url = xhr._replaybug_url || "";
+    const telemetryUrl = resolveForTelemetry(url);
     const method = xhr._replaybug_method || "GET";
     const startedAt = xhr._replaybug_started || nowIso();
     const requestStart = performance.now();
@@ -159,10 +181,10 @@ export function setupNetworkCapture(
 
       if (config.captureFailedRequests === true && (isError || isClientError)) {
         const breadcrumb = createBreadcrumb("network", {
-          message: `${method} ${sanitizeUrl(url)} ${statusCode}`,
+          message: `${method} ${sanitizeUrl(telemetryUrl)} ${statusCode}`,
           level: isError ? "error" : "warning",
           data: {
-            url: sanitizeUrl(url),
+            url: sanitizeUrl(telemetryUrl),
             method,
             status_code: statusCode,
             duration_ms: durationMs,
@@ -466,6 +488,105 @@ export function setupClickCapture(
 export interface NavigationCaptureConfig {
   captureNavigation: boolean;
   onNavigationEvent: (breadcrumb: Breadcrumb) => void;
+}
+
+/**
+ * Input capture configuration
+ */
+export interface InputCaptureConfig {
+  captureSafeInputs: boolean;
+  safeInputSelectors: string[];
+  onInputEvent: (breadcrumb: Breadcrumb) => void;
+}
+
+/**
+ * Setup input capture with delegated event listener
+ * Captures input/change events on form elements
+ */
+export function setupInputCapture(
+  state: SdkState,
+  config: InputCaptureConfig,
+): () => void {
+  if (typeof document === "undefined") {
+    return () => {};
+  }
+
+  const handler = (event: Event) => {
+    if (!config.captureSafeInputs) return;
+
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+
+    // Only capture input, select, textarea elements
+    const tag = target.tagName.toLowerCase();
+    if (!["input", "select", "textarea"].includes(tag)) {
+      return;
+    }
+
+    // Ignore data-replaybug-ignore
+    if (
+      target.hasAttribute("data-replaybug-ignore") ||
+      target.closest("[data-replaybug-ignore]")
+    ) {
+      return;
+    }
+
+    // Check if element matches safe selector
+    const isSafeMatch = config.safeInputSelectors.some((selector) =>
+      target.matches(selector),
+    );
+
+    // Check if element is sensitive
+    const inputEl = target as HTMLInputElement;
+    const isSensitive = isSensitiveInput(inputEl);
+
+    // Values are never captured by default. Only explicit safe-selector
+    // opt-in fields may capture their value, and mandatory sensitivity rules
+    // always override the opt-in.
+    const capturesValue = isSafeMatch && !isSensitive;
+    const hasValue = (inputEl.value?.length ?? 0) > 0;
+    const value = capturesValue && hasValue ? inputEl.value : undefined;
+
+    // Generate locator candidates
+    const _candidates = generateLocatorCandidates(target);
+
+    // Accessible name (short, sanitized)
+    const accessibleName = getAccessibleName(target);
+    const sanitizedName = accessibleName
+      ? sanitizeLocatorText(accessibleName)
+      : undefined;
+
+    // Current route (best effort)
+    let _route: string | undefined;
+    try {
+      _route = window.location.pathname + window.location.search;
+    } catch {
+      // ignore
+    }
+
+    const breadcrumb = createBreadcrumb("input", {
+      message: `Input: ${tag}${sanitizedName ? ` ${sanitizedName}` : ""}`,
+      data: {
+        input_type: inputEl.type ?? tag,
+        input_name: inputEl.name || undefined,
+        input_id: inputEl.id || undefined,
+        has_value: hasValue,
+        value: value ? sanitizeString(value) : undefined,
+        is_safe_selector_match: isSafeMatch,
+      },
+      event_type: "input",
+    });
+    config.onInputEvent(breadcrumb);
+  };
+
+  // Use capture phase for input events to catch before any other handlers
+  document.addEventListener("input", handler, true);
+  document.addEventListener("change", handler, true);
+
+  return () => {
+    document.removeEventListener("input", handler, true);
+    document.removeEventListener("change", handler, true);
+  };
 }
 
 /**

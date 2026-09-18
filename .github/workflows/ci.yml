@@ -140,6 +140,7 @@ jobs:
       REPLAYBUG_WEB_URL: http://localhost:3000
       REPLAYBUG_API_URL: http://localhost:4001
       REPLAYBUG_TRUSTED_ORIGINS: http://localhost:3000
+      REPLAYBUG_USER_HMAC_SECRET: test-hmac-secret-0123456789abcdef0123456789
       NEXT_PUBLIC_REPLAYBUG_API_URL: http://localhost:4001
     steps:
       - uses: actions/checkout@v4
@@ -154,4 +155,21 @@ jobs:
       - run: pnpm db:migrate
       - run: pnpm build
       - run: pnpm --filter @replaybug/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @replaybug/demo exec playwright install --with-deps chromium
       - run: pnpm --filter @replaybug/web test:e2e
+      - run: pnpm --filter @replaybug/demo test:e2e
+
+  sdk-size:
+    name: sdk-size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm sdk:size

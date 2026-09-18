@@ -71,11 +71,24 @@ export class FetchTransport implements Transport {
       const error = new Error(
         `Ingest failed: ${response.status} ${response.statusText}`,
       );
-      (error as Error & { status: number; response: unknown }).status =
-        response.status;
-      (error as Error & { status: number; response: unknown }).response =
-        errorData;
-      throw error;
+      // Attach response for retry logic (includes headers for Retry-After)
+      const errorWithResponse = error as Error & {
+        status: number;
+        response: {
+          status: number;
+          statusText: string;
+          headers: Headers;
+          data: unknown;
+        };
+      };
+      errorWithResponse.status = response.status;
+      errorWithResponse.response = {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        data: errorData,
+      };
+      throw errorWithResponse;
     }
 
     const result = (await response.json()) as TransportResult;

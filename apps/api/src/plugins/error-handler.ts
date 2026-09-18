@@ -46,6 +46,18 @@ export async function registerErrorHandler(app: AppInstance): Promise<void> {
           ? error.statusCode
           : 500;
 
+      // Map Fastify's transport-level body overflow to the shared
+      // protocol vocabulary used by the ingest endpoint.
+      if (error.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
+        const body: ErrorEnvelope = {
+          code: "PAYLOAD_TOO_LARGE",
+          message: "Request body exceeds the maximum allowed size",
+          requestId,
+        };
+        await reply.status(413).send(body);
+        return;
+      }
+
       if (statusCode < 500) {
         const body: ErrorEnvelope = {
           code: error.code ?? "REQUEST_ERROR",

@@ -1617,8 +1617,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            /** @enum {integer} */
-            protocol_version: 1;
+            protocol_version: number;
             sdk_name: string;
             sdk_version: string;
             session: Record<string, never>;
@@ -1732,6 +1731,56 @@ export interface paths {
               details?: Record<string, never>;
             };
           };
+        };
+      };
+    };
+    delete?: never;
+    options: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+      };
+    };
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/demo/500-endpoint": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
         };
       };
     };

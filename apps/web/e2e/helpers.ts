@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 
-/** Truncate all domain + auth tables for isolated E2E. No personal data persists. */
+/** Truncate all domain + auth + telemetry tables for isolated E2E. No personal data persists. */
 export async function resetE2EDatabase(): Promise<void> {
   const url =
     process.env["REPLAYBUG_DATABASE_URL"] ??
@@ -9,7 +9,9 @@ export async function resetE2EDatabase(): Promise<void> {
   try {
     await pool.query(`
       TRUNCATE "user", "session", "account", "verification",
-        "audit_logs", "project_keys", "project_origins",
+        "audit_logs", "event_processing_outbox", "events",
+        "rate_limit_buckets", "telemetry_sessions",
+        "project_keys", "project_origins",
         "project_environments", "projects",
         "workspace_memberships", "workspaces"
       RESTART IDENTITY CASCADE

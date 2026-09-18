@@ -25,6 +25,7 @@ import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerOriginRoutes } from "./routes/origins.js";
 import { registerKeyRoutes } from "./routes/keys.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
+import { registerDemo500Route } from "./routes/demo/500.js";
 
 export interface BuildAppOptions {
   config: ApiConfig;
@@ -137,6 +138,7 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   await registerOriginRoutes(app, { db, auth });
   await registerKeyRoutes(app, { db, auth });
   await registerIngestRoutes(app, { db, config });
+  await registerDemo500Route(app);
 
   return app;
 }

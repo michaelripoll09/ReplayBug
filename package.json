@@ -20,7 +20,7 @@
     "api:generate": "pnpm --filter @replaybug/api-client api:generate",
     "sdk:size": "node scripts/sdk-size.mjs",
     "test:sdk": "pnpm --filter @replaybug/sdk test",
-    "test:e2e": "pnpm --filter @replaybug/web test:e2e"
+    "test:e2e": "pnpm --filter @replaybug/web test:e2e && pnpm --filter @replaybug/demo test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

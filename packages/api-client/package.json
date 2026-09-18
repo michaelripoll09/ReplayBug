@@ -18,7 +18,7 @@
     "dist"
   ],
   "scripts": {
-    "api:generate": "tsx scripts/generate-openapi.ts && openapi-typescript openapi/openapi.json -o src/schema.d.ts",
+    "api:generate": "tsx scripts/generate-openapi.ts && openapi-typescript openapi/openapi.json -o src/schema.d.ts && prettier --write openapi/openapi.json src/schema.d.ts",
     "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --clean --out-dir dist",
     "dev": "tsup src/index.ts --format esm,cjs --dts --sourcemap --watch --out-dir dist",
     "lint": "eslint src scripts --max-warnings 0",

@@ -102,7 +102,11 @@ export async function verifyIngestKey(
 }
 
 /**
- * Validate origin against project allowed origins
+ * Validate origin against project allowed origins.
+ *
+ * Exact string match only: no wildcards, no port relaxation, no scheme
+ * relaxation. A configured origin authorizes that exact origin and nothing
+ * else (http vs https, host variants and ports are all distinct).
  */
 export async function validateOrigin(
   db: Database,
@@ -115,18 +119,6 @@ export async function validateOrigin(
   const enabledOrigins = origins
     .filter((o: { isEnabled: boolean; origin: string }) => o.isEnabled)
     .map((o: { origin: string }) => o.origin);
-
-  // Exact match required (no wildcards in production)
-  // For localhost, allow any port if localhost is configured
-  if (
-    origin.startsWith("http://localhost:") ||
-    origin.startsWith("http://127.0.0.1:")
-  ) {
-    return enabledOrigins.some(
-      (o: string) =>
-        o.startsWith("http://localhost:") || o.startsWith("http://127.0.0.1:"),
-    );
-  }
 
   return enabledOrigins.includes(origin);
 }
@@ -156,18 +148,43 @@ export async function checkRateLimit(
   };
 }
 
+export interface BatchValidationLimits {
+  maxBatchEvents: number;
+  maxEventBytes: number;
+  maxBodyBytes: number;
+}
+
 /**
  * Validate batch request
  */
 export function validateBatchRequest(
   body: unknown,
   requestId: string,
+  limits: BatchValidationLimits = {
+    maxBatchEvents: TELEMETRY_LIMITS.MAX_BATCH_EVENTS,
+    maxEventBytes: TELEMETRY_LIMITS.MAX_EVENT_BYTES,
+    maxBodyBytes: TELEMETRY_LIMITS.MAX_BODY_BYTES,
+  },
 ): BatchIngestRequest {
   if (!body || typeof body !== "object") {
     throw createIngestError(
       "MALFORMED_PAYLOAD",
       "Request body must be a JSON object",
       requestId,
+    );
+  }
+
+  // Enforce the body size limit explicitly. The transport-level parser limit
+  // is the first line of defense; this check keeps the guarantee wherever the
+  // body has already been parsed (e.g. embedded/injected transports).
+  const bodyBytes = Buffer.byteLength(JSON.stringify(body), "utf8");
+  if (bodyBytes > limits.maxBodyBytes) {
+    throw createIngestError(
+      "PAYLOAD_TOO_LARGE",
+      `Request body exceeds the maximum size of ${limits.maxBodyBytes} bytes`,
+      requestId,
+      { received: bodyBytes, max: limits.maxBodyBytes },
+      413,
     );
   }
 
@@ -200,12 +217,13 @@ export function validateBatchRequest(
     );
   }
 
-  if (batch.events.length > TELEMETRY_LIMITS.MAX_BATCH_EVENTS) {
+  if (batch.events.length > limits.maxBatchEvents) {
     throw createIngestError(
       "PAYLOAD_TOO_LARGE",
-      `Too many events in batch. Maximum ${TELEMETRY_LIMITS.MAX_BATCH_EVENTS}`,
+      `Too many events in batch. Maximum ${limits.maxBatchEvents}`,
       requestId,
-      { received: batch.events.length, max: TELEMETRY_LIMITS.MAX_BATCH_EVENTS },
+      { received: batch.events.length, max: limits.maxBatchEvents },
+      413,
     );
   }
 
@@ -243,6 +261,17 @@ export function validateBatchRequest(
         "MALFORMED_PAYLOAD",
         `Event at index ${i} is not an object`,
         requestId,
+      );
+    }
+
+    const eventBytes = Buffer.byteLength(JSON.stringify(event), "utf8");
+    if (eventBytes > limits.maxEventBytes) {
+      throw createIngestError(
+        "PAYLOAD_TOO_LARGE",
+        `Event at index ${i} exceeds maximum size of ${limits.maxEventBytes} bytes`,
+        requestId,
+        { index: i, received: eventBytes, max: limits.maxEventBytes },
+        413,
       );
     }
 
@@ -342,7 +371,7 @@ export async function ingestBatch(
       "RATE_LIMITED",
       "Rate limit exceeded",
       requestId,
-      undefined,
+      { retryAfterSeconds: rateLimit.retryAfterSeconds },
       429,
     );
   }

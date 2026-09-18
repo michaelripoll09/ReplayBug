@@ -10,6 +10,14 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Relative API calls from the demo (e.g. the intentional 500 endpoint)
+    // are proxied to the local API server.
+    proxy: {
+      "/api": {
+        target: "http://localhost:4001",
+        changeOrigin: false,
+      },
+    },
   },
   preview: {
     port: 5173,

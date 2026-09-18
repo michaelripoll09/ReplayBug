@@ -195,6 +195,10 @@ export interface TransportResult {
 /**
  * Parse DSN string
  * Format: https://<PUBLIC_KEY>@host/api/ingest/v1
+ *
+ * The returned base URL is the origin plus any optional (self-hosted) path
+ * prefix. The transport appends the full ingest path, so a DSN that already
+ * includes `/api/ingest/v1` is normalized to avoid duplicating the path.
  */
 export function parseDsn(dsn: string): DsnParseResult {
   try {
@@ -203,13 +207,9 @@ export function parseDsn(dsn: string): DsnParseResult {
     if (!publicKey) {
       throw new Error("DSN missing public key (username)");
     }
-    // Remove trailing /api/ingest/v1 if present to get base URL
-    const baseUrl =
-      url.origin + url.pathname.replace(/\/api\/ingest\/v1\/?$/, "");
-    return {
-      publicKey,
-      baseUrl: baseUrl.replace(/\/$/, "") + "/api/ingest/v1",
-    };
+    const prefix = url.pathname.replace(/\/api\/ingest\/v1\/?$/, "");
+    const baseUrl = (url.origin + prefix).replace(/\/$/, "");
+    return { publicKey, baseUrl };
   } catch (error) {
     throw new Error(
       `Invalid DSN: ${error instanceof Error ? error.message : String(error)}`,

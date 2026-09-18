@@ -40,6 +40,8 @@ export default defineConfig({
         REPLAYBUG_WEB_URL: "http://localhost:3000",
         REPLAYBUG_API_URL: "http://localhost:4001",
         REPLAYBUG_TRUSTED_ORIGINS: "http://localhost:3000",
+        REPLAYBUG_USER_HMAC_SECRET:
+          "test-hmac-secret-0123456789abcdef0123456789",
         LOG_LEVEL: "silent",
       },
     },

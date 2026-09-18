@@ -2458,6 +2458,13 @@
       }
     },
     "/api/ingest/v1/batch": {
+      "options": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
       "post": {
         "tags": ["Ingest"],
         "requestBody": {
@@ -2475,8 +2482,7 @@
                 ],
                 "properties": {
                   "protocol_version": {
-                    "type": "integer",
-                    "enum": [1]
+                    "type": "integer"
                   },
                   "sdk_name": {
                     "type": "string"
@@ -2668,6 +2674,15 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/demo/500-endpoint": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
           }
         }
       }

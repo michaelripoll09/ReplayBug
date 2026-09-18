@@ -11,8 +11,11 @@ import type { WorkspaceRole } from "@replaybug/contracts";
  *   (ownership transfer is out of scope this block, so owner==admin except
  *   workspace deletion which is not exposed this block)
  * - member: read + inspect telemetry (read projects/envs/origins/keys meta);
- *   cannot create/update/delete projects, envs, origins or rotate keys
- * - viewer: read-only (same read set as member this block)
+ *   cannot create/update/delete projects, envs, origins or rotate keys.
+ *   Block 6: member additionally manages issues (status, assignment, tags,
+ *   comments) and reads sessions + own notifications.
+ * - viewer: read-only (same read set as member this block). Block 6: issue,
+ *   session and own-notification reads only; no issue mutation.
  *
  * Project access is derived from workspace membership: there is no
  * project-membership system. Any workspace member can read any project in
@@ -31,7 +34,14 @@ export type Capability =
   | "origin:read"
   | "origin:write"
   | "key:read"
-  | "key:rotate";
+  | "key:rotate"
+  | "issue:read"
+  | "issue:update-status"
+  | "issue:assign"
+  | "issue:manage-tags"
+  | "issue:comment"
+  | "session:read"
+  | "notification:read-own";
 
 const ROLE_RANK: Record<WorkspaceRole, number> = {
   viewer: 0,
@@ -53,6 +63,13 @@ const CAPABILITY_MIN_ROLE: Record<Capability, WorkspaceRole> = {
   "origin:write": "admin",
   "key:read": "viewer",
   "key:rotate": "admin",
+  "issue:read": "viewer",
+  "issue:update-status": "member",
+  "issue:assign": "member",
+  "issue:manage-tags": "member",
+  "issue:comment": "member",
+  "session:read": "viewer",
+  "notification:read-own": "viewer",
 };
 
 export function hasCapability(
@@ -82,6 +99,34 @@ export function canRotateKeys(role: WorkspaceRole): boolean {
   return hasCapability(role, "key:rotate");
 }
 
+export function canReadIssues(role: WorkspaceRole): boolean {
+  return hasCapability(role, "issue:read");
+}
+
+export function canUpdateIssueStatus(role: WorkspaceRole): boolean {
+  return hasCapability(role, "issue:update-status");
+}
+
+export function canAssignIssues(role: WorkspaceRole): boolean {
+  return hasCapability(role, "issue:assign");
+}
+
+export function canManageIssueTags(role: WorkspaceRole): boolean {
+  return hasCapability(role, "issue:manage-tags");
+}
+
+export function canCommentOnIssues(role: WorkspaceRole): boolean {
+  return hasCapability(role, "issue:comment");
+}
+
+export function canReadSessions(role: WorkspaceRole): boolean {
+  return hasCapability(role, "session:read");
+}
+
+export function canReadOwnNotifications(role: WorkspaceRole): boolean {
+  return hasCapability(role, "notification:read-own");
+}
+
 /** RBAC matrix for docs/tests. */
 export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
   owner: {
@@ -97,6 +142,13 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "origin:write": true,
     "key:read": true,
     "key:rotate": true,
+    "issue:read": true,
+    "issue:update-status": true,
+    "issue:assign": true,
+    "issue:manage-tags": true,
+    "issue:comment": true,
+    "session:read": true,
+    "notification:read-own": true,
   },
   admin: {
     "workspace:read": true,
@@ -111,6 +163,13 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "origin:write": true,
     "key:read": true,
     "key:rotate": true,
+    "issue:read": true,
+    "issue:update-status": true,
+    "issue:assign": true,
+    "issue:manage-tags": true,
+    "issue:comment": true,
+    "session:read": true,
+    "notification:read-own": true,
   },
   member: {
     "workspace:read": true,
@@ -125,6 +184,13 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "origin:write": false,
     "key:read": true,
     "key:rotate": false,
+    "issue:read": true,
+    "issue:update-status": true,
+    "issue:assign": true,
+    "issue:manage-tags": true,
+    "issue:comment": true,
+    "session:read": true,
+    "notification:read-own": true,
   },
   viewer: {
     "workspace:read": true,
@@ -139,5 +205,12 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "origin:write": false,
     "key:read": true,
     "key:rotate": false,
+    "issue:read": true,
+    "issue:update-status": false,
+    "issue:assign": false,
+    "issue:manage-tags": false,
+    "issue:comment": false,
+    "session:read": true,
+    "notification:read-own": true,
   },
 };

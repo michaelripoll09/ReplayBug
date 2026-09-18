@@ -10,14 +10,24 @@ export const PROJECT_UPDATES_CHANNEL = "replaybug_project_updates";
 export const PROJECT_UPDATE_VERSION = 1;
 
 export type ProjectUpdateType =
-  "issue.created" | "issue.updated" | "issue.regressed";
+  | "issue.created"
+  | "issue.updated"
+  | "issue.regressed"
+  | "comment.created"
+  | "assignment.changed"
+  | "tags.changed";
 
 export interface ProjectUpdateNotification {
   version: typeof PROJECT_UPDATE_VERSION;
   type: ProjectUpdateType;
   projectId: string;
   issueId: string;
-  eventId: string;
+  /**
+   * Originating telemetry event when the update came from processing
+   * (issue.created/regressed). Dashboard mutations (status, assignment,
+   * tags, comments) carry no event and omit it.
+   */
+  eventId?: string;
 }
 
 /**

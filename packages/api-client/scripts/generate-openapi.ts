@@ -7,6 +7,15 @@
  * No network listener is started. No database connection is opened: the
  * pooled client is created lazily by `pg` and never queried during
  * generation, then closed via `app.close()`.
+ *
+ * Dependency-graph note: this script imports `apps/api` source directly, so
+ * the api-client `tsc` program transitively reads `@replaybug/db`,
+ * `@replaybug/contracts`, and `@replaybug/observability` via their built
+ * `dist/*.d.ts`. The `@replaybug/api` devDependency in package.json is the
+ * honest Turbo edge that makes `typecheck dependsOn ^build` order those
+ * builds first; without it a clean parallel `typecheck --force` races
+ * `tsup --clean` DTS rebuilds. Do NOT "fix" this by narrowing tsconfig
+ * `include` to hide `scripts/` — the coupling is real and must stay ordered.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";

@@ -1,8 +1,19 @@
 import type {
+  EventDetail,
+  IssueActivity,
+  IssueComment,
+  IssueSummary,
+  IssueTag,
+  IssueTagSummary,
+  Notification,
+  Occurrence,
+  SessionEvent,
+  TelemetrySession,
   Project,
   ProjectEnvironment,
   ProjectKeyMeta,
   ProjectOrigin,
+  UserSummary,
   Workspace,
   WorkspaceWithRole,
   WorkspaceRole,
@@ -10,10 +21,17 @@ import type {
 import type {
   AuditRepo,
   EnvironmentRepo,
+  IssueActivityRepo,
+  IssueCommentRepo,
+  IssueRepo,
   MembershipRepo,
+  NotificationRepo,
   OriginRepo,
   ProjectKeyRepo,
   ProjectRepo,
+  TagRepo,
+  TelemetryRepo,
+  UserRepo,
   WorkspaceRepo,
 } from "@replaybug/db";
 
@@ -96,3 +114,574 @@ export function toKeyMetaDto(
 
 export type MembershipRow = MembershipRepo.MembershipRow;
 export type AuditRow = AuditRepo.AuditRow;
+
+export function toUserSummaryDto(row: UserRepo.UserRow): UserSummary {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    ...(row.image === null ? {} : { image: row.image }),
+    emailVerified: row.emailVerified,
+  };
+}
+
+export function toIssueTagSummaryDto(
+  row: TagRepo.IssueTagRow,
+): IssueTagSummary {
+  return { id: row.id, name: row.name, slug: row.slug };
+}
+
+export function toIssueTagDto(row: TagRepo.IssueTagRow): IssueTag {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    name: row.name,
+    slug: row.slug,
+    createdAt: iso(row.createdAt),
+  };
+}
+
+/**
+ * Issue DTO mapper. Built field-by-field: fingerprint material, payloads
+ * and key hashes can never leak through a spread.
+ */
+export function toIssueDto(
+  row: IssueRepo.IssueRow,
+  assignee: UserRepo.UserRow | null,
+  tags: TagRepo.IssueTagRow[],
+): IssueSummary {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    type:
+      row.type === "exception" ||
+      row.type === "unhandled_rejection" ||
+      row.type === "console_error" ||
+      row.type === "network" ||
+      row.type === "message"
+        ? row.type
+        : "message",
+    title: row.title,
+    normalizedMessage: row.normalizedMessage,
+    status:
+      row.status === "open" ||
+      row.status === "investigating" ||
+      row.status === "resolved" ||
+      row.status === "ignored"
+        ? row.status
+        : "open",
+    severity: row.severity === "warning" ? "warning" : "error",
+    assignee: assignee === null ? null : toUserSummaryDto(assignee),
+    firstSeenAt: iso(row.firstSeenAt),
+    lastSeenAt: iso(row.lastSeenAt),
+    resolvedAt: row.resolvedAt === null ? null : iso(row.resolvedAt),
+    firstRelease: row.firstRelease,
+    lastRelease: row.lastRelease,
+    occurrenceCount: row.occurrenceCount,
+    affectedSessionCount: row.affectedSessionCount,
+    tags: tags.map(toIssueTagSummaryDto),
+    createdAt: iso(row.createdAt),
+    updatedAt: iso(row.updatedAt),
+  };
+}
+
+export function toIssueActivityDto(
+  row: IssueActivityRepo.IssueActivityRow,
+  actor: UserRepo.UserRow | null,
+): IssueActivity {
+  const type = row.type;
+  return {
+    id: row.id,
+    issueId: row.issueId,
+    type:
+      type === "created" ||
+      type === "assigned" ||
+      type === "unassigned" ||
+      type === "status_changed" ||
+      type === "comment_added" ||
+      type === "regression_detected" ||
+      type === "reproduction_generated" ||
+      type === "ai_analysis_requested" ||
+      type === "ai_analysis_completed" ||
+      type === "ai_analysis_failed"
+        ? type
+        : "created",
+    actor: actor === null ? null : toUserSummaryDto(actor),
+    metadata:
+      typeof row.metadataJson === "object" && row.metadataJson !== null
+        ? (row.metadataJson as Record<string, unknown>)
+        : {},
+    createdAt: iso(row.createdAt),
+  };
+}
+
+export function toIssueCommentDto(
+  row: IssueCommentRepo.IssueCommentRow,
+  author: UserRepo.UserRow | null,
+): IssueComment {
+  return {
+    id: row.id,
+    issueId: row.issueId,
+    author:
+      author === null
+        ? {
+            id: "deleted",
+            email: "",
+            name: "Deleted user",
+            emailVerified: false,
+          }
+        : toUserSummaryDto(author),
+    bodyMarkdown: row.bodyMarkdown,
+    createdAt: iso(row.createdAt),
+    updatedAt: iso(row.updatedAt),
+  };
+}
+
+export function toOccurrenceDto(row: TelemetryRepo.EventRow): Occurrence {
+  return {
+    eventId: row.id,
+    sessionId: row.telemetrySessionId,
+    occurredAt: iso(row.occurredAt),
+    receivedAt: iso(row.receivedAt),
+    environment: row.environment,
+    release: row.release,
+    pageUrl: row.pageUrl,
+    eventType: row.eventType,
+    processingState:
+      row.processingState === "pending" ||
+      row.processingState === "processed" ||
+      row.processingState === "rejected"
+        ? row.processingState
+        : "pending",
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function str(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function optStr(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function num(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function optNum(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function strArray(value: unknown, max = 10): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((v): v is string => typeof v === "string").slice(0, max);
+}
+
+/** Maximum stack frames exposed per exception value in event detail. */
+const EVENT_DETAIL_MAX_FRAMES = 50;
+
+function safeFrames(value: unknown): Array<{
+  filename?: string;
+  function?: string;
+  lineno?: number;
+  colno?: number;
+  inApp?: boolean;
+}> {
+  const payload = asRecord(value);
+  const frames = payload["frames"];
+  if (!Array.isArray(frames)) {
+    return [];
+  }
+  return frames.slice(0, EVENT_DETAIL_MAX_FRAMES).map((f) => {
+    const frame = asRecord(f);
+    const out: {
+      filename?: string;
+      function?: string;
+      lineno?: number;
+      colno?: number;
+      inApp?: boolean;
+    } = {};
+    const filename = optStr(frame["filename"]);
+    if (filename !== undefined) {
+      out.filename = filename;
+    }
+    const fn = optStr(frame["function"]);
+    if (fn !== undefined) {
+      out.function = fn;
+    }
+    const lineno = optNum(frame["lineno"]);
+    if (lineno !== undefined && Number.isInteger(lineno) && lineno >= 0) {
+      out.lineno = lineno;
+    }
+    const colno = optNum(frame["colno"]);
+    if (colno !== undefined && Number.isInteger(colno) && colno >= 0) {
+      out.colno = colno;
+    }
+    if (typeof frame["in_app"] === "boolean") {
+      out.inApp = frame["in_app"];
+    }
+    return out;
+  });
+}
+
+/**
+ * Picks explicit safe fields from the stored (already ingest-sanitized)
+ * payload. Drops everything else: mechanism internals, fingerprint
+ * overrides, breadcrumb/SDK data bags and input values never reach the DTO.
+ * Malformed stored payloads degrade to safe empty defaults, never throw.
+ */
+function sanitizeEventData(
+  eventType: string,
+  payload: unknown,
+): EventDetail["data"] {
+  const p = asRecord(payload);
+  switch (eventType) {
+    case "exception": {
+      const values = Array.isArray(p["values"]) ? p["values"] : [];
+      return {
+        values: values.slice(0, 10).map((v) => {
+          const value = asRecord(v);
+          const out: {
+            type: string;
+            value: string;
+            stacktrace?: {
+              frames: ReturnType<typeof safeFrames>;
+            };
+          } = { type: str(value["type"]), value: str(value["value"]) };
+          if (value["stacktrace"] !== undefined) {
+            out.stacktrace = { frames: safeFrames(value["stacktrace"]) };
+          }
+          return out;
+        }),
+      };
+    }
+    case "unhandled_rejection":
+      return { reason: str(p["reason"]) };
+    case "console_error":
+      return { args: strArray(p["args"]) };
+    case "network": {
+      const statusCode = optNum(p["status_code"]);
+      return {
+        url: str(p["url"]),
+        method: str(p["method"]),
+        statusCode:
+          statusCode !== undefined &&
+          Number.isInteger(statusCode) &&
+          statusCode >= 0 &&
+          statusCode <= 999
+            ? statusCode
+            : null,
+        durationMs: Math.max(0, Math.floor(num(p["duration_ms"]))),
+        ...(optStr(p["failure_type"]) !== undefined
+          ? { failureType: optStr(p["failure_type"]) as string }
+          : {}),
+      };
+    }
+    case "message":
+      return { message: str(p["message"]), level: str(p["level"], "info") };
+    case "navigation": {
+      const fromUrl = optStr(p["from_url"]);
+      return {
+        fromUrl: fromUrl === undefined ? null : fromUrl,
+        toUrl: str(p["to_url"]),
+        navigationType: str(p["navigation_type"]),
+      };
+    }
+    case "click": {
+      const candidates = Array.isArray(p["locator_candidates"])
+        ? p["locator_candidates"]
+        : [];
+      return {
+        locatorCandidates: candidates.slice(0, 5).map((c) => {
+          const candidate = asRecord(c);
+          return {
+            type: str(candidate["type"]),
+            value: str(candidate["value"]),
+            confidence: num(candidate["confidence"]),
+          };
+        }),
+        elementTag: str(p["element_tag"]),
+        ...(optStr(p["element_role"]) !== undefined
+          ? { elementRole: optStr(p["element_role"]) as string }
+          : {}),
+        ...(optStr(p["accessible_name"]) !== undefined
+          ? { accessibleName: optStr(p["accessible_name"]) as string }
+          : {}),
+        ...(optStr(p["route"]) !== undefined
+          ? { route: optStr(p["route"]) as string }
+          : {}),
+      };
+    }
+    case "input":
+      return {
+        inputType: str(p["input_type"]),
+        ...(optStr(p["input_name"]) !== undefined
+          ? { inputName: optStr(p["input_name"]) as string }
+          : {}),
+        hasValue: p["has_value"] === true,
+      };
+    case "custom_breadcrumb":
+      return {
+        category: str(p["category"]),
+        message: str(p["message"]),
+        level: str(p["level"], "info"),
+      };
+    case "sdk":
+      return {
+        sdkName: str(p["sdk_name"]),
+        sdkVersion: str(p["sdk_version"]),
+        event: str(p["event"]),
+      };
+    default:
+      return { category: "unknown", message: "", level: "info" };
+  }
+}
+
+export function toEventDetailDto(row: TelemetryRepo.EventRow): EventDetail {
+  const base = {
+    eventId: row.id,
+    sessionId: row.telemetrySessionId,
+    issueId: row.issueId,
+    occurredAt: iso(row.occurredAt),
+    receivedAt: iso(row.receivedAt),
+    environment: row.environment,
+    release: row.release,
+    pageUrl: row.pageUrl,
+    processingState:
+      row.processingState === "pending" ||
+      row.processingState === "processed" ||
+      row.processingState === "rejected"
+        ? row.processingState
+        : ("pending" as const),
+  };
+  const data = sanitizeEventData(row.eventType, row.payloadJson);
+  switch (row.eventType) {
+    case "exception":
+      return {
+        ...base,
+        eventType: "exception",
+        data: data as Extract<EventDetail, { eventType: "exception" }>["data"],
+      };
+    case "unhandled_rejection":
+      return {
+        ...base,
+        eventType: "unhandled_rejection",
+        data: data as Extract<
+          EventDetail,
+          { eventType: "unhandled_rejection" }
+        >["data"],
+      };
+    case "console_error":
+      return {
+        ...base,
+        eventType: "console_error",
+        data: data as Extract<
+          EventDetail,
+          { eventType: "console_error" }
+        >["data"],
+      };
+    case "network":
+      return {
+        ...base,
+        eventType: "network",
+        data: data as Extract<EventDetail, { eventType: "network" }>["data"],
+      };
+    case "navigation":
+      return {
+        ...base,
+        eventType: "navigation",
+        data: data as Extract<EventDetail, { eventType: "navigation" }>["data"],
+      };
+    case "click":
+      return {
+        ...base,
+        eventType: "click",
+        data: data as Extract<EventDetail, { eventType: "click" }>["data"],
+      };
+    case "input":
+      return {
+        ...base,
+        eventType: "input",
+        data: data as Extract<EventDetail, { eventType: "input" }>["data"],
+      };
+    case "message":
+      return {
+        ...base,
+        eventType: "message",
+        data: data as Extract<EventDetail, { eventType: "message" }>["data"],
+      };
+    case "custom_breadcrumb":
+      return {
+        ...base,
+        eventType: "custom_breadcrumb",
+        data: data as Extract<
+          EventDetail,
+          { eventType: "custom_breadcrumb" }
+        >["data"],
+      };
+    case "sdk":
+    default:
+      return {
+        ...base,
+        eventType: "sdk",
+        data:
+          row.eventType === "sdk"
+            ? (data as Extract<EventDetail, { eventType: "sdk" }>["data"])
+            : { sdkName: "", sdkVersion: "", event: "unknown" },
+      };
+  }
+}
+
+/**
+ * Session DTO: envelope metadata only. Raw host identifiers
+ * (`sdk_session_id`, `anonymous_user_hash`) never leave the database.
+ */
+export function toSessionDto(
+  row: TelemetryRepo.TelemetrySessionRow,
+): TelemetrySession {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    environment: row.environment,
+    release: row.release,
+    startedAt: iso(row.startedAt),
+    lastSeenAt: iso(row.lastSeenAt),
+    initialUrl: row.initialUrl,
+    browserName: row.browserName,
+    browserVersion: row.browserVersion,
+    osName: row.osName,
+    osVersion: row.osVersion,
+    deviceType: row.deviceType,
+    viewportWidth: row.viewportWidth,
+    viewportHeight: row.viewportHeight,
+    sdkVersion: row.sdkVersion,
+  };
+}
+
+/** Maximum plain-text summary length for timeline entries. */
+const SESSION_EVENT_SUMMARY_MAX = 200;
+
+function truncateSummary(value: string): string {
+  const flat = value.replace(/\s+/g, " ").trim();
+  return flat.length > SESSION_EVENT_SUMMARY_MAX
+    ? `${flat.slice(0, SESSION_EVENT_SUMMARY_MAX - 1)}…`
+    : flat;
+}
+
+/**
+ * One-line plain-text evidence derived from the sanitized payload.
+ * Never includes input values, breadcrumb data bags or SDK detail bags.
+ */
+export function summarizeEventPayload(
+  eventType: string,
+  payload: unknown,
+): string {
+  const p = asRecord(payload);
+  switch (eventType) {
+    case "exception": {
+      const first = Array.isArray(p["values"])
+        ? asRecord(p["values"][0])
+        : asRecord(undefined);
+      return truncateSummary(
+        `${str(first["type"], "Error")}: ${str(first["value"], "unknown error")}`,
+      );
+    }
+    case "unhandled_rejection":
+      return truncateSummary(
+        `Unhandled rejection: ${str(p["reason"], "unknown reason")}`,
+      );
+    case "console_error":
+      return truncateSummary(
+        strArray(p["args"], 3).join(" ") || "Console error",
+      );
+    case "network": {
+      const status = optNum(p["status_code"]);
+      const outcome =
+        status !== undefined ? `→ ${status}` : str(p["failure_type"], "failed");
+      return truncateSummary(
+        `${str(p["method"], "?")} ${str(p["url"], "?")} ${outcome}`,
+      );
+    }
+    case "navigation":
+      return truncateSummary(
+        `${str(p["from_url"], "∅")} → ${str(p["to_url"], "?")}`,
+      );
+    case "click": {
+      const label =
+        optStr(p["accessible_name"]) ??
+        optStr(p["element_role"]) ??
+        str(p["element_tag"], "element");
+      return truncateSummary(`Click ${label}`);
+    }
+    case "input":
+      return truncateSummary(
+        `Input ${optStr(p["input_name"]) ?? str(p["input_type"], "interaction")}`,
+      );
+    case "message":
+      return truncateSummary(
+        `${str(p["level"], "info")}: ${str(p["message"], "")}`,
+      );
+    case "custom_breadcrumb":
+      return truncateSummary(
+        `${str(p["category"], "custom")}: ${str(p["message"], "")}`,
+      );
+    case "sdk":
+      return truncateSummary(`SDK ${str(p["event"], "event")}`);
+    default:
+      return truncateSummary(`${eventType || "event"}`);
+  }
+}
+
+export function toSessionEventDto(row: TelemetryRepo.EventRow): SessionEvent {
+  return {
+    id: row.id,
+    sequenceNumber: row.sequenceNumber,
+    eventType: row.eventType,
+    occurredAt: iso(row.occurredAt),
+    receivedAt: iso(row.receivedAt),
+    environment: row.environment,
+    release: row.release,
+    pageUrl: row.pageUrl,
+    processingState:
+      row.processingState === "pending" ||
+      row.processingState === "processed" ||
+      row.processingState === "rejected"
+        ? row.processingState
+        : "pending",
+    summary: summarizeEventPayload(row.eventType, row.payloadJson),
+  };
+}
+
+export function toNotificationDto(
+  row: NotificationRepo.NotificationRow,
+): Notification {
+  const type = row.type;
+  return {
+    id: row.id,
+    type:
+      type === "issue_assigned" ||
+      type === "issue_comment_mention" ||
+      type === "issue_regression" ||
+      type === "reproduction_failed" ||
+      type === "ai_analysis_completed" ||
+      type === "ai_analysis_failed"
+        ? type
+        : "issue_regression",
+    title: row.title,
+    body: row.body,
+    projectId: row.projectId,
+    issueId: row.issueId,
+    readAt: row.readAt === null ? null : iso(row.readAt),
+    createdAt: iso(row.createdAt),
+  };
+}

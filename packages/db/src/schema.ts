@@ -380,6 +380,13 @@ export const issues = pgTable(
     ),
     index("issues_project_last_seen_idx").on(t.projectId, t.lastSeenAt),
     index("issues_assigned_to_idx").on(t.assignedToUserId),
+    // pg_trgm fuzzy search (Block 6): typo-tolerant matching on titles and
+    // normalized messages. Extension is enabled in migration 0003.
+    index("issues_title_trgm_idx").using("gin", t.title.op("gin_trgm_ops")),
+    index("issues_normalized_message_trgm_idx").using(
+      "gin",
+      t.normalizedMessage.op("gin_trgm_ops"),
+    ),
     check(
       "issues_status_check",
       sql`${t.status} IN ('open','investigating','resolved','ignored')`,
@@ -394,6 +401,87 @@ export const issues = pgTable(
     check(
       "issues_affected_session_count_check",
       sql`${t.affectedSessionCount} >= 0`,
+    ),
+  ],
+);
+
+/**
+ * Project-local issue tags. `slug` is the deterministic deduplication key:
+ * `normalizeTagSlug` maps equivalent spellings to one slug, and
+ * `unique(project_id, slug)` enforces a single tag row per project.
+ */
+export const issueTags = pgTable(
+  "issue_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("issue_tags_project_slug_unique").on(t.projectId, t.slug),
+    index("issue_tags_project_idx").on(t.projectId),
+  ],
+);
+
+/**
+ * Many-to-many issue↔tag assignments. Composite PK makes assignment
+ * idempotent (`ON CONFLICT DO NOTHING`) and unassignment a single delete.
+ */
+export const issueTagAssignments = pgTable(
+  "issue_tag_assignments",
+  {
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => issueTags.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: "issue_tag_assignments_pk",
+      columns: [t.issueId, t.tagId],
+    }),
+    index("issue_tag_assignments_tag_idx").on(t.tagId),
+  ],
+);
+
+/**
+ * Markdown issue comments. Bodies are capped at 10_000 chars (spec T08
+ * 10k-20k bound); rendering must sanitize, never store HTML here.
+ */
+export const issueComments = pgTable(
+  "issue_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    authorUserId: text("author_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    bodyMarkdown: text("body_markdown").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("issue_comments_issue_created_idx").on(t.issueId, t.createdAt),
+    check(
+      "issue_comments_body_length_check",
+      sql`char_length(${t.bodyMarkdown}) <= 10000`,
     ),
   ],
 );
@@ -631,6 +719,9 @@ export const schema = {
   issues,
   issueActivity,
   issueAffectedSessions,
+  issueTags,
+  issueTagAssignments,
+  issueComments,
   notifications,
   events,
   eventProcessingOutbox,

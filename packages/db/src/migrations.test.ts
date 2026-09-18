@@ -41,6 +41,9 @@ const ISSUE_TABLES = [
   "issues",
   "issue_activity",
   "issue_affected_sessions",
+  "issue_tags",
+  "issue_tag_assignments",
+  "issue_comments",
   "notifications",
 ];
 
@@ -296,6 +299,52 @@ describe("migrations against real PostgreSQL", () => {
         "issues_project_status_last_seen_idx",
         "notifications_user_read_created_idx",
       ]);
+
+      // Critical Block 6 structure: pg_trgm extension, tag/comment tables,
+      // project-local tag uniqueness, comment body bound, trigram indexes.
+      const extension = await pool.query(
+        `SELECT extname FROM pg_extension WHERE extname = 'pg_trgm'`,
+      );
+      expect(extension.rows.length).toBe(1);
+
+      const tagUnique = await pool.query(
+        `SELECT conname FROM pg_constraint
+         WHERE conname = 'issue_tags_project_slug_unique'`,
+      );
+      expect(tagUnique.rows.length).toBe(1);
+
+      const commentCheck = await pool.query(
+        `SELECT conname FROM pg_constraint
+         WHERE conname = 'issue_comments_body_length_check'`,
+      );
+      expect(commentCheck.rows.length).toBe(1);
+
+      const trgmIndexes = await pool.query(
+        `SELECT indexname, indexdef FROM pg_indexes
+         WHERE schemaname = 'public' AND indexname IN
+           ('issues_title_trgm_idx','issues_normalized_message_trgm_idx',
+            'issue_tags_project_idx','issue_tag_assignments_tag_idx',
+            'issue_comments_issue_created_idx')
+         ORDER BY indexname`,
+      );
+      expect(
+        trgmIndexes.rows.map((r: { indexname: string }) => r.indexname),
+      ).toEqual([
+        "issue_comments_issue_created_idx",
+        "issue_tag_assignments_tag_idx",
+        "issue_tags_project_idx",
+        "issues_normalized_message_trgm_idx",
+        "issues_title_trgm_idx",
+      ]);
+      for (const row of trgmIndexes.rows as Array<{
+        indexname: string;
+        indexdef: string;
+      }>) {
+        if (row.indexname.startsWith("issues_")) {
+          expect(row.indexdef).toMatch(/USING gin/);
+          expect(row.indexdef).toMatch(/gin_trgm_ops/);
+        }
+      }
     });
 
     // Second run: no pending migrations, no corruption.
@@ -312,8 +361,9 @@ describe("migrations against real PostgreSQL", () => {
       const journal = await pool.query(
         `SELECT COUNT(*)::int AS count FROM drizzle.__drizzle_migrations`,
       );
-      // One journal row per migration file (0000 + 0001 + 0002), never duplicated.
-      expect(journal.rows[0]?.count).toBe(3);
+      // One journal row per migration file (0000 + 0001 + 0002 + 0003),
+      // never duplicated.
+      expect(journal.rows[0]?.count).toBe(4);
     });
   });
 
@@ -411,6 +461,130 @@ describe("migrations against real PostgreSQL", () => {
         claimPendingOutboxBatch(tx, 10),
       );
       expect(claimed.map((item) => item.eventId)).toEqual([eventId]);
+    });
+  });
+
+  it("upgrades a Block 5 database with issues to Block 6 preserving data", async () => {
+    const name = await createTempDatabase();
+    const databaseUrl = tempDatabaseUrl(name);
+
+    // 1. Block 5 schema (0000 + 0001 + 0002).
+    const block5Folder = await buildPartialMigrationsFolder(2);
+    await runMigrations(databaseUrl, block5Folder);
+
+    const projectId = "77777777-7777-4777-8777-777777777777";
+    const issueId = "88888888-8888-4888-8888-888888888888";
+
+    // 2. Real Block 5 issue fixture with activity + notification.
+    await withPool(databaseUrl, async (pool) => {
+      await pool.query(
+        `INSERT INTO "user" ("id", "name", "email")
+         VALUES ('fixture-user-6', 'Fixture User', 'fixture6@example.com')`,
+      );
+      await pool.query(
+        `INSERT INTO workspaces ("id", "name", "slug", "created_by_user_id")
+         VALUES ('99999999-9999-4999-8999-999999999999', 'Fixture WS', 'fixture-ws-6', 'fixture-user-6')`,
+      );
+      await pool.query(
+        `INSERT INTO projects ("id", "workspace_id", "name", "slug")
+         VALUES ($1, '99999999-9999-4999-8999-999999999999',
+                 'Fixture Proj', 'fixture-proj-6')`,
+        [projectId],
+      );
+      await pool.query(
+        `INSERT INTO issues
+           ("id", "project_id", "fingerprint", "fingerprint_signature",
+            "type", "title", "normalized_message", "status", "severity",
+            "first_seen_at", "last_seen_at", "occurrence_count",
+            "affected_session_count")
+         VALUES ($1, $2,
+                 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                 'TypeError: boom',
+                 'exception', 'TypeError: boom', 'TypeError: boom',
+                 'resolved', 'error', now(), now(), 3, 2)`,
+        [issueId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO issue_activity ("issue_id", "actor_user_id", "type")
+         VALUES ($1, 'fixture-user-6', 'created')`,
+        [issueId],
+      );
+      await pool.query(
+        `INSERT INTO notifications
+           ("user_id", "workspace_id", "project_id", "issue_id",
+            "type", "title", "body")
+         VALUES ('fixture-user-6', '99999999-9999-4999-8999-999999999999',
+                 $1, $2, 'issue_regression', 'Regression', 'reopened')`,
+        [projectId, issueId],
+      );
+    });
+
+    // 3. Apply Block 6.
+    await runMigrations(databaseUrl, MIGRATIONS_DIR);
+
+    // 4. Issue data survives; tags/comments tables are usable immediately.
+    await withPool(databaseUrl, async (pool) => {
+      const issue = await pool.query(
+        `SELECT status, occurrence_count FROM issues WHERE id = $1`,
+        [issueId],
+      );
+      expect(issue.rows[0]?.status).toBe("resolved");
+      expect(issue.rows[0]?.occurrence_count).toBe(3);
+
+      const activity = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM issue_activity WHERE issue_id = $1`,
+        [issueId],
+      );
+      expect(activity.rows[0]?.count).toBe(1);
+
+      await pool.query(
+        `INSERT INTO issue_tags ("project_id", "name", "slug")
+         VALUES ($1, 'Needs Triage', 'needs-triage')`,
+        [projectId],
+      );
+      const tag = await pool.query(
+        `SELECT id FROM issue_tags WHERE project_id = $1 AND slug = 'needs-triage'`,
+        [projectId],
+      );
+      const tagId = tag.rows[0]?.id as string;
+      expect(typeof tagId).toBe("string");
+
+      await pool.query(
+        `INSERT INTO issue_tag_assignments ("issue_id", "tag_id")
+         VALUES ($1, $2)`,
+        [issueId, tagId],
+      );
+      await pool.query(
+        `INSERT INTO issue_comments ("issue_id", "author_user_id", "body_markdown")
+         VALUES ($1, 'fixture-user-6', 'Looking into this.')`,
+        [issueId],
+      );
+
+      // Project-local slug uniqueness is enforced.
+      await expect(
+        pool.query(
+          `INSERT INTO issue_tags ("project_id", "name", "slug")
+           VALUES ($1, 'needs_triage', 'needs-triage')`,
+          [projectId],
+        ),
+      ).rejects.toThrow();
+
+      // Comment body bound is enforced (10k chars).
+      await expect(
+        pool.query(
+          `INSERT INTO issue_comments ("issue_id", "author_user_id", "body_markdown")
+           VALUES ($1, 'fixture-user-6', $2)`,
+          [issueId, `x`.repeat(10_001)],
+        ),
+      ).rejects.toThrow();
+
+      // pg_trgm similarity works on the migrated issues table.
+      const similar = await pool.query(
+        `SELECT title FROM issues
+         WHERE title % 'TypeError boom' AND project_id = $1`,
+        [projectId],
+      );
+      expect(similar.rows.length).toBe(1);
     });
   });
 });

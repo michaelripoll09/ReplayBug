@@ -39,6 +39,27 @@ export function canRotateKeys(role: WorkspaceRole): boolean {
   return role === "owner" || role === "admin";
 }
 
+/**
+ * Block 6 issue affordances. Member and up manage issues; viewers read.
+ * Mirrors the API `issue:*` capabilities — the backend enforces, the UI
+ * only hides controls that would deterministically 403.
+ */
+export function canUpdateIssueStatus(role: WorkspaceRole): boolean {
+  return role !== "viewer";
+}
+
+export function canAssignIssue(role: WorkspaceRole): boolean {
+  return role !== "viewer";
+}
+
+export function canManageIssueTags(role: WorkspaceRole): boolean {
+  return role !== "viewer";
+}
+
+export function canCommentOnIssue(role: WorkspaceRole): boolean {
+  return role !== "viewer";
+}
+
 export function isReadOnly(role: WorkspaceRole): boolean {
   return role === "member" || role === "viewer";
 }

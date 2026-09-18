@@ -24,6 +24,11 @@ import { registerProjectRoutes } from "./routes/projects.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerOriginRoutes } from "./routes/origins.js";
 import { registerKeyRoutes } from "./routes/keys.js";
+import { registerIssueRoutes } from "./routes/issues.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerRealtimeRoutes } from "./routes/realtime.js";
+import { createProjectUpdatesBroker } from "./realtime/broker.js";
+import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerDemo500Route } from "./routes/demo/500.js";
 
@@ -86,6 +91,35 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
             description: "Public ingest key metadata + rotation",
           },
           {
+            name: "Issues",
+            description: "Issue list/detail, lifecycle, tags, comments",
+          },
+          {
+            name: "Tags",
+            description: "Project-local issue tags + assignments",
+          },
+          {
+            name: "Comments",
+            description: "Issue comments with author-only edit",
+          },
+          {
+            name: "Metrics",
+            description: "Diagnosis-focused project metrics",
+          },
+          {
+            name: "Sessions",
+            description: "Telemetry sessions, timelines and context",
+          },
+          {
+            name: "Notifications",
+            description: "Own-user in-app notifications",
+          },
+          {
+            name: "Realtime",
+            description:
+              "Project-scoped Server-Sent Events invalidation stream",
+          },
+          {
             name: "Ingest",
             description: "Public telemetry event ingestion",
           },
@@ -137,6 +171,29 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   await registerEnvironmentRoutes(app, { db, auth });
   await registerOriginRoutes(app, { db, auth });
   await registerKeyRoutes(app, { db, auth });
+  await registerIssueRoutes(app, { db, auth });
+  await registerNotificationRoutes(app, { db, auth });
+
+  // Process-level LISTEN broker (one connection per API process) feeding
+  // the SSE route. Lazy: connects on the first stream subscriber.
+  const broker = createProjectUpdatesBroker({
+    connectionString: config.databaseUrl,
+    logger: {
+      info: (message) => logger.info(message),
+      warn: (message) => logger.warn(message),
+      error: (message) => logger.error(message),
+    },
+  });
+  app.addHook("onClose", async () => {
+    await broker.stop();
+  });
+  await registerRealtimeRoutes(app, {
+    db,
+    auth,
+    broker,
+    trustedOrigins: config.trustedOrigins,
+  });
+  await registerSessionRoutes(app, { db, auth });
   await registerIngestRoutes(app, { db, config });
   await registerDemo500Route(app);
 

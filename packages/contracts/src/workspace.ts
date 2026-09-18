@@ -28,6 +28,19 @@ export const workspaceWithRoleSchema = workspaceSchema.extend({
 
 export type WorkspaceWithRole = z.infer<typeof workspaceWithRoleSchema>;
 
+/**
+ * Workspace membership DTO: read-only minimum for assignment pickers.
+ * No management operations (invite/remove/role) exist in Block 6.
+ */
+export const workspaceMemberSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  email: z.string().email(),
+  role: workspaceRoleSchema,
+});
+
+export type WorkspaceMember = z.infer<typeof workspaceMemberSchema>;
+
 export const createWorkspaceRequestSchema = z.object({
   name: z.string().trim().min(1).max(100),
   slug: z

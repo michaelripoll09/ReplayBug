@@ -4,13 +4,16 @@ Developer observability for reproducible bugs: privacy-safe browser failure
 context, grouped issues, session timelines, and Playwright reproduction
 tests — on a self-hostable stack with no paid services.
 
-> **Status: Block 5 worker and issue processing.** Auth, tenancy, onboarding,
+> **Status: Block 6 issues dashboard.** Auth, tenancy, onboarding,
 > dashboard shell, settings, typed OpenAPI client, Chromium E2E, the browser
 > SDK, public ingest, and the asynchronous processing pipeline (transactional
 > outbox → pg-boss → normalization → deterministic fingerprinting → issue
 > grouping → aggregates → regression handling → PostgreSQL NOTIFY) exist with
-> real PostgreSQL. Issue REST API/dashboard, session timeline, SSE, source
-> maps, releases, Playwright reproduction generation, retention cleanup and
+> real PostgreSQL — **and** the issue workflow API + dashboard now consume
+> them: issue list/detail/occurrences with search/filter/sort/pagination,
+> project metrics, status/assignment/tags/comments/activity, sessions and
+> timelines, notifications, and SSE realtime invalidation. Source maps,
+> releases, Playwright reproduction generation, retention cleanup and
 > Ollama analysis are explicitly not built yet.
 
 ## What exists today
@@ -19,11 +22,22 @@ tests — on a self-hostable stack with no paid services.
 - Next.js dashboard at `apps/web`: smart `/` redirect, `/login`, `/register`
   (email/password, no OAuth), `/onboarding[/workspace|/project|/origin|/complete]`
   wizard, `/app/workspaces/[workspaceId]` and `/app/projects/[projectId]`
-  overviews (real config data only, honest "Telemetry not configured yet"),
+  overviews (live metrics where telemetry exists),
   `/app/projects/[projectId]/settings[/general|/environments|/origins|/keys]`
   with RBAC hide-or-readonly, sidebar + workspace switcher + theme
   (light/dark/system, no flash) + mobile drawer. See
   `docs/architecture/frontend.md`.
+- Dashboard issues workflow (Block 6): project overview with Recharts
+  metrics (`?range=24h|7d|30d`), issue list with URL-driven
+  search/filter/sort/keyset pagination, issue detail with occurrence
+  selector (`?event=`), raw-stack-as-text evidence, embedded session
+  context and full session timelines, status/assignment/tags/comments with
+  activity history, sessions list/detail, notifications bell, and SSE
+  invalidation with honest Live/Reconnecting status. Viewer roles are
+  read-only in UI and 403 on direct API mutation. No reproduction
+  generation, AI panels, or source-mapped frames exist yet — none are
+  shown. See `docs/architecture/dashboard.md` and
+  `docs/architecture/realtime.md`.
 - Typed dashboard client at `packages/api-client`: `pnpm api:generate` builds
   Fastify in-process, writes `openapi/openapi.json` + `src/schema.d.ts`,
   `createReplayBugApiClient({ baseUrl, fetch })` with `credentials: include`
@@ -65,13 +79,12 @@ tests — on a self-hostable stack with no paid services.
 
 ## What is explicitly not built yet
 
-Issue REST API and dashboard views (list, detail, session timeline),
-assignment/comments/tags UI, SSE and dashboard realtime, release management
-and source maps, Playwright reproduction generator, retention cleanup,
-invitation cleanup, Ollama analysis, GitHub OAuth, CLI secret tokens and
-public demo mode. Fingerprinting runs on raw sanitized stacks until source
-maps exist, so minified frames group by minified location. No fake metrics,
-charts or screenshots. See `` for the full
+Release management and source maps (stacks render raw/unsymbolicated),
+Playwright reproduction generator, retention cleanup, invitation cleanup,
+Ollama analysis, GitHub OAuth, CLI secret tokens and public demo mode.
+Fingerprinting runs on raw sanitized stacks until source maps exist, so
+minified frames group by minified location. No fake metrics, charts or
+screenshots. See `` for the full
 plan and `docs/architecture/worker.md` for what the worker does today.
 
 ## Stack

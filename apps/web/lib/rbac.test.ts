@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  canAssignIssue,
+  canCommentOnIssue,
   canCreateProject,
   canManageEnvironments,
+  canManageIssueTags,
   canManageOrigins,
   canManageProject,
   canManageWorkspace,
   canRotateKeys,
+  canUpdateIssueStatus,
   isReadOnly,
 } from "./rbac";
 
@@ -38,5 +42,18 @@ describe("RBAC UX layer (mirrors backend owner/admin/member/viewer)", () => {
       expect(canRotateKeys(role)).toBe(false);
       expect(isReadOnly(role)).toBe(true);
     }
+  });
+
+  it("members manage issues while viewers read", () => {
+    for (const role of ["owner", "admin", "member"] as const) {
+      expect(canUpdateIssueStatus(role)).toBe(true);
+      expect(canAssignIssue(role)).toBe(true);
+      expect(canManageIssueTags(role)).toBe(true);
+      expect(canCommentOnIssue(role)).toBe(true);
+    }
+    expect(canUpdateIssueStatus("viewer")).toBe(false);
+    expect(canAssignIssue("viewer")).toBe(false);
+    expect(canManageIssueTags("viewer")).toBe(false);
+    expect(canCommentOnIssue("viewer")).toBe(false);
   });
 });

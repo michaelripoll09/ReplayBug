@@ -1,3 +1,4 @@
+export { normalizeTagSlug } from "./tag-slug.js";
 export {
   NORMALIZED_PLACEHOLDER,
   capText,

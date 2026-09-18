@@ -116,7 +116,7 @@ async function main(): Promise<void> {
         `Seed: public key (store securely, never shown again): ${created.bootstrap.key}`,
       );
       console.log(
-        `Seed: ingest endpoint ${created.bootstrap.ingestEndpoint} (FUTURE, non-functional)`,
+        `Seed: ingest endpoint /api/ingest/v1/batch (live, dev only)`,
       );
     }
 

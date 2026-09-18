@@ -10,6 +10,7 @@ export {
   workspaceRoleSchema,
   workspaceSchema,
   workspaceWithRoleSchema,
+  workspaceMemberSchema,
   createWorkspaceRequestSchema,
   updateWorkspaceRequestSchema,
   normalizeWorkspaceSlug,
@@ -18,6 +19,7 @@ export type {
   WorkspaceRole,
   Workspace,
   WorkspaceWithRole,
+  WorkspaceMember,
   CreateWorkspaceRequest,
   UpdateWorkspaceRequest,
 } from "./workspace.js";
@@ -72,6 +74,107 @@ export {
   pagedResponseSchema,
 } from "./pagination.js";
 export type { ApiErrorCode, ListQuery } from "./pagination.js";
+export {
+  issueStatusSchema,
+  issueTypeSchema,
+  issueSeveritySchema,
+  issueSortSchema,
+  sortOrderSchema,
+  issueTagSummarySchema,
+  issueSummarySchema,
+  issueListQuerySchema,
+  updateIssueStatusRequestSchema,
+  updateIssueAssigneeRequestSchema,
+  issueActivityTypeSchema,
+  issueActivitySchema,
+  activityListQuerySchema,
+  issueCommentSchema,
+  createCommentRequestSchema,
+  updateCommentRequestSchema,
+  commentListQuerySchema,
+  issueTagSchema,
+  createTagRequestSchema,
+} from "./issues.js";
+export type {
+  IssueStatus,
+  IssueType,
+  IssueSeverity,
+  IssueSort,
+  SortOrder,
+  IssueTagSummary,
+  IssueSummary,
+  IssueListQuery,
+  UpdateIssueStatusRequest,
+  UpdateIssueAssigneeRequest,
+  IssueActivityType,
+  IssueActivity,
+  ActivityListQuery,
+  IssueComment,
+  CreateCommentRequest,
+  UpdateCommentRequest,
+  CommentListQuery,
+  IssueTag,
+  CreateTagRequest,
+} from "./issues.js";
+export {
+  telemetrySessionSchema,
+  sessionListQuerySchema,
+  eventProcessingStateSchema,
+  sessionEventSchema,
+  sessionEventsQuerySchema,
+  timelineContextQuerySchema,
+} from "./sessions.js";
+export type {
+  TelemetrySession,
+  SessionListQuery,
+  EventProcessingState,
+  SessionEvent,
+  SessionEventsQuery,
+  TimelineContextQuery,
+} from "./sessions.js";
+export {
+  occurrenceSchema,
+  occurrenceListQuerySchema,
+  exceptionEventDetailSchema,
+  rejectionEventDetailSchema,
+  consoleEventDetailSchema,
+  networkEventDetailSchema,
+  navigationEventDetailSchema,
+  clickEventDetailSchema,
+  inputEventDetailSchema,
+  messageEventDetailSchema,
+  breadcrumbEventDetailSchema,
+  sdkEventDetailSchema,
+  eventDetailSchema,
+} from "./events.js";
+export type {
+  Occurrence,
+  OccurrenceListQuery,
+  SafeFrame,
+  EventDetail,
+} from "./events.js";
+export { notificationTypeSchema, notificationSchema } from "./notifications.js";
+export { notificationListQuerySchema } from "./notifications.js";
+export type { NotificationType, Notification } from "./notifications.js";
+export type { NotificationListQuery } from "./notifications.js";
+export {
+  metricsRangeSchema,
+  metricsQuerySchema,
+  metricsBucketSizeSchema,
+  metricsBucketSchema,
+  topIssueEntrySchema,
+  metricsDistributionEntrySchema,
+  projectMetricsSchema,
+} from "./metrics.js";
+export type {
+  MetricsRange,
+  MetricsQuery,
+  MetricsBucketSize,
+  MetricsBucket,
+  TopIssueEntry,
+  MetricsDistributionEntry,
+  ProjectMetrics,
+} from "./metrics.js";
 export {
   PROTOCOL_VERSION,
   SENSITIVE_URL_PARAMS,

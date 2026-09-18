@@ -34,4 +34,34 @@ describe("capability policy", () => {
     expect(RBAC_MATRIX.viewer["workspace:read"]).toBe(true);
     expect(RBAC_MATRIX.admin["workspace:update"]).toBe(false);
   });
+
+  it("owner/admin hold every Block 6 issue/session/notification capability", () => {
+    for (const role of ["owner", "admin"] as const) {
+      expect(hasCapability(role, "issue:read")).toBe(true);
+      expect(hasCapability(role, "issue:update-status")).toBe(true);
+      expect(hasCapability(role, "issue:assign")).toBe(true);
+      expect(hasCapability(role, "issue:manage-tags")).toBe(true);
+      expect(hasCapability(role, "issue:comment")).toBe(true);
+      expect(hasCapability(role, "session:read")).toBe(true);
+      expect(hasCapability(role, "notification:read-own")).toBe(true);
+    }
+  });
+
+  it("member manages issues but viewer is read-only", () => {
+    expect(hasCapability("member", "issue:read")).toBe(true);
+    expect(hasCapability("member", "issue:update-status")).toBe(true);
+    expect(hasCapability("member", "issue:assign")).toBe(true);
+    expect(hasCapability("member", "issue:manage-tags")).toBe(true);
+    expect(hasCapability("member", "issue:comment")).toBe(true);
+    expect(hasCapability("member", "session:read")).toBe(true);
+    expect(hasCapability("member", "notification:read-own")).toBe(true);
+
+    expect(hasCapability("viewer", "issue:read")).toBe(true);
+    expect(hasCapability("viewer", "session:read")).toBe(true);
+    expect(hasCapability("viewer", "notification:read-own")).toBe(true);
+    expect(hasCapability("viewer", "issue:update-status")).toBe(false);
+    expect(hasCapability("viewer", "issue:assign")).toBe(false);
+    expect(hasCapability("viewer", "issue:manage-tags")).toBe(false);
+    expect(hasCapability("viewer", "issue:comment")).toBe(false);
+  });
 });

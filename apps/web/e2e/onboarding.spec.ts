@@ -58,7 +58,10 @@ test("E2E1 register → onboarding → overview → logout", async ({ page }) =>
   await expect(page.getByText("You are set up")).toBeVisible();
   await page.getByRole("button", { name: "Go to project" }).click();
   await expect(page).toHaveURL(/\/app\/projects\//, { timeout: 15_000 });
-  await expect(page.getByText("Telemetry not configured yet")).toBeVisible();
+  // Block 6 overview: live metrics (zeros on a fresh project) instead of
+  // the old "not configured" note.
+  await expect(page.getByText("Unresolved")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("No occurrences in this range.")).toBeVisible();
 
   // Logout -> protected blocked -> login redirect.
   await page.getByRole("button", { name: "Log out" }).click();

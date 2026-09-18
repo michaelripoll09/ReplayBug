@@ -144,3 +144,42 @@ export async function findIssueById(
     .limit(1);
   return rows[0];
 }
+
+/**
+ * Locks one issue row by id. Callers must be inside a transaction: the row
+ * lock serializes concurrent mutations (status, assignment) of one issue.
+ */
+export async function lockIssueById(
+  tx: DbTransaction,
+  issueId: string,
+): Promise<IssueRow | undefined> {
+  const rows = await tx
+    .select()
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1)
+    .for("update");
+  return rows[0];
+}
+
+export interface UpdateIssueRowPatch {
+  status?: "open" | "investigating" | "resolved" | "ignored";
+  assignedToUserId?: string | null;
+  resolvedAt?: Date | null;
+}
+
+/**
+ * Applies a field patch to one issue row and bumps updated_at.
+ */
+export async function updateIssueRow(
+  tx: DbTransaction,
+  issueId: string,
+  patch: UpdateIssueRowPatch,
+): Promise<IssueRow | undefined> {
+  const rows = await tx
+    .update(issues)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(issues.id, issueId))
+    .returning();
+  return rows[0];
+}

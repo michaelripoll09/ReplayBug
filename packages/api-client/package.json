@@ -26,6 +26,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@replaybug/api": "workspace:*",
     "@replaybug/config": "workspace:*",
     "@types/node": "22.20.3",
     "openapi-typescript": "^7.13.0",

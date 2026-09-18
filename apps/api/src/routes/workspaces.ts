@@ -12,6 +12,7 @@ import {
   createWorkspace,
   getWorkspace,
   listMyWorkspaces,
+  listWorkspaceMembers,
   updateWorkspace,
 } from "../services/workspaces.js";
 
@@ -52,6 +53,17 @@ const errorJson = {
     code: { type: "string" },
     message: { type: "string" },
     requestId: { type: "string" },
+  },
+} as const;
+
+const workspaceMemberJson = {
+  type: "object",
+  required: ["id", "name", "email", "role"],
+  properties: {
+    id: { type: "string" },
+    name: { type: "string" },
+    email: { type: "string" },
+    role: { type: "string", enum: ["owner", "admin", "member", "viewer"] },
   },
 } as const;
 
@@ -194,6 +206,38 @@ export async function registerWorkspaceRoutes(
           ...(parsed.slug !== undefined ? { slug: parsed.slug } : {}),
         });
         await reply.send(updated);
+      } catch (error) {
+        await sendDomainError(request, reply, error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/workspaces/:id/members",
+    {
+      schema: {
+        tags: ["Workspaces"],
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string", format: "uuid" } },
+        },
+        response: {
+          200: { type: "array", items: workspaceMemberJson },
+          401: errorJson,
+          404: errorJson,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const user = await getSessionUser(request, deps.auth);
+        if (user === null) {
+          throw authRequired();
+        }
+        const params = request.params as { id: string };
+        const items = await listWorkspaceMembers(deps.db, user.id, params.id);
+        await reply.send(items);
       } catch (error) {
         await sendDomainError(request, reply, error);
       }

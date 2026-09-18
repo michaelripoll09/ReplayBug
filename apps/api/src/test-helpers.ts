@@ -48,6 +48,8 @@ export async function resetTestDatabase(client: DbClient): Promise<void> {
       "audit_logs", "event_processing_outbox", "events", "rate_limit_buckets",
       "telemetry_sessions", "project_keys", "project_origins",
       "project_environments", "projects",
+      "issue_comments", "issue_tag_assignments", "issue_tags",
+      "issue_activity", "issue_affected_sessions", "issues", "notifications",
       "workspace_memberships", "workspaces"
     RESTART IDENTITY CASCADE
   `);

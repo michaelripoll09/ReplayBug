@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { Sidebar } from "./sidebar";
 
 /** Compact header: breadcrumb (URL is source of truth) + actions + mobile drawer. */
@@ -57,6 +58,7 @@ export function Header({
           <Sidebar onNavigate={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
+      <NotificationsBell />
     </header>
   );
 }

@@ -99,6 +99,13 @@ export function KeysSettings({
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        The public ingest key is browser-safe and write-only: it lets the SDK
+        send telemetry from allowed origins and cannot read anything back.
+        Source-map uploads and release management need a secret project token
+        instead (below) — those are CLI/CI-only and never belong in frontend
+        code.
+      </p>
       {!canRotate ? (
         <Alert title="Read-only">
           Your role ({role}) can view key metadata but cannot rotate keys.

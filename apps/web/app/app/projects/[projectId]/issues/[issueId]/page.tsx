@@ -30,6 +30,11 @@ import { ProjectNav } from "@/components/project/project-nav";
 import { RealtimeStatus } from "@/components/realtime-status";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
 import {
+  StackView,
+  toStackDiagnostic,
+  type ExceptionStackValue,
+} from "@/components/issues/stack-view";
+import {
   AssigneeControl,
   StatusControl,
   TagsManager,
@@ -38,71 +43,6 @@ import { CommentsSection } from "@/components/issues/comments";
 import { ActivityTimeline } from "@/components/issues/activity-timeline";
 import { SessionTimeline } from "@/components/sessions/session-timeline";
 import { formatDateTime } from "@/lib/format";
-
-interface Frame {
-  filename?: string;
-  function?: string;
-  lineno?: number;
-  colno?: number;
-  inApp?: boolean;
-}
-
-function formatFrame(frame: Frame): string {
-  const fn = frame.function ?? "<anonymous>";
-  const loc =
-    frame.filename !== undefined
-      ? `${frame.filename}${frame.lineno !== undefined ? `:${frame.lineno}` : ""}${frame.colno !== undefined ? `:${frame.colno}` : ""}`
-      : "<unknown>";
-  return `at ${fn} (${loc})${frame.inApp === false ? " [third-party]" : ""}`;
-}
-
-/**
- * Raw (unsymbolicated) stack evidence rendered as inert text. Source-map
- * symbolication is not part of this build — the label says so honestly
- * instead of implying mapped frames.
- */
-function RawStack({
-  data,
-}: {
-  data: {
-    values: Array<{
-      type: string;
-      value: string;
-      stacktrace?: { frames: Frame[] };
-    }>;
-  };
-}) {
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-zinc-500">
-        Raw stack trace — unsymbolicated. Source maps are not part of this
-        build.
-      </p>
-      {data.values.map((value, index) => (
-        <div key={index}>
-          <p className="text-sm font-medium">
-            {value.type}: {value.value}
-          </p>
-          {value.stacktrace !== undefined &&
-          value.stacktrace.frames.length > 0 ? (
-            <pre className="mt-1 overflow-x-auto rounded-md bg-zinc-100 p-3 font-mono text-xs dark:bg-zinc-900">
-              {value.stacktrace.frames.map((frame, i) => (
-                <span key={i}>
-                  {formatFrame(frame)}
-                  {"\n"}
-                </span>
-              ))}
-            </pre>
-          ) : (
-            <p className="mt-1 text-xs text-zinc-500">
-              No stack frames captured.
-            </p>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function EventEvidence({ eventId }: { eventId: string }) {
   const event = useQuery(eventQuery(eventId));
@@ -132,6 +72,7 @@ function EventEvidence({ eventId }: { eventId: string }) {
     pageUrl: string | null;
     processingState: string;
     data: Record<string, unknown>;
+    diagnostic?: unknown;
   };
   return (
     <div className="space-y-3">
@@ -156,16 +97,15 @@ function EventEvidence({ eventId }: { eventId: string }) {
         </div>
       </dl>
       {detail.eventType === "exception" ? (
-        <RawStack
-          data={
-            detail.data as {
-              values: Array<{
-                type: string;
-                value: string;
-                stacktrace?: { frames: Frame[] };
-              }>;
-            }
+        <StackView
+          values={
+            (
+              detail.data as unknown as {
+                values?: ExceptionStackValue[];
+              }
+            ).values ?? []
           }
+          diagnostic={toStackDiagnostic(detail.diagnostic)}
         />
       ) : (
         <div className="space-y-1">
@@ -183,9 +123,11 @@ function EventEvidence({ eventId }: { eventId: string }) {
 
 /**
  * Issue detail: header, controls, evidence for the selected occurrence
- * (?event=, shareable), embedded session context and discussion. No
- * reproduction, AI or source-mapped UI exists in this build — none is
- * shown.
+ * (?event=, shareable), embedded session context and discussion. Stack
+ * evidence defaults to the source-mapped view when the worker symbolicated
+ * the event, with an explicit Source mapped/Raw toggle and honest
+ * unavailable states otherwise. No reproduction or AI UI exists in this
+ * build — none is shown.
  */
 export default function IssueDetailPage({
   params,

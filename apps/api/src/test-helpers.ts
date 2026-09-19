@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { createDbClient, type DbClient } from "@replaybug/db";
+import {
+  DEFAULT_ARTIFACT_MAX_FILE_BYTES,
+  PREFLIGHT_MAX_ENTRIES,
+  UPLOAD_AGGREGATE_MAX_BYTES,
+} from "@replaybug/artifacts";
 import type { ApiConfig } from "./config.js";
 
 /** Test database URL: real PG only, never SQLite. */
@@ -29,6 +34,9 @@ export function testApiConfig(overrides?: Partial<ApiConfig>): ApiConfig {
     ingestRateLimitRequestsPerMinute: 60,
     ingestRateLimitEventsPerMinute: 1000,
     userHmacSecret: "test-hmac-secret-0123456789abcdef0123456789",
+    artifactMaxFileBytes: DEFAULT_ARTIFACT_MAX_FILE_BYTES,
+    artifactPreflightMaxEntries: PREFLIGHT_MAX_ENTRIES,
+    artifactAggregateMaxBytes: UPLOAD_AGGREGATE_MAX_BYTES,
     ...overrides,
   };
 }
@@ -50,6 +58,7 @@ export async function resetTestDatabase(client: DbClient): Promise<void> {
       "project_environments", "projects",
       "issue_comments", "issue_tag_assignments", "issue_tags",
       "issue_activity", "issue_affected_sessions", "issues", "notifications",
+      "release_artifacts", "releases",
       "workspace_memberships", "workspaces"
     RESTART IDENTITY CASCADE
   `);

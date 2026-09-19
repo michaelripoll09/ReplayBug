@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
-/** Project sub-navigation: overview, issues, sessions, settings. */
+/** Project sub-navigation: overview, issues, sessions, releases, settings. */
 export function ProjectNav({ projectId }: { projectId: string }) {
   const pathname = usePathname();
   const items = [
@@ -17,6 +17,11 @@ export function ProjectNav({ projectId }: { projectId: string }) {
     {
       href: `/app/projects/${projectId}/sessions`,
       label: "Sessions",
+      exact: false,
+    },
+    {
+      href: `/app/projects/${projectId}/releases`,
+      label: "Releases",
       exact: false,
     },
     {

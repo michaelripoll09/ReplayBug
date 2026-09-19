@@ -23,6 +23,16 @@ export const queryKeys = {
     ["projects", projectId, "environments"] as const,
   origins: (projectId: string) => ["projects", projectId, "origins"] as const,
   keys: (projectId: string) => ["projects", projectId, "keys"] as const,
+  // RS-10 releases + secret tokens. Same targeted-invalidation contract as
+  // every other factory: exact list/detail keys only, never the whole cache.
+  // Secret-token plaintext is never stored here — creation responses stay in
+  // component memory (see SecretTokensSettings) and list payloads are
+  // metadata only.
+  releases: (projectId: string) => ["projects", projectId, "releases"] as const,
+  release: (projectId: string, releaseId: string) =>
+    ["projects", projectId, "releases", releaseId] as const,
+  secretTokens: (projectId: string) =>
+    ["projects", projectId, "secret-tokens"] as const,
   // Block 6 dashboard. List keys carry serialized params so parallel
   // filter states cache independently; invalidating a prefix refreshes
   // every param variant of that scope — never the whole cache.
@@ -553,6 +563,52 @@ export function keysQuery(projectId: string) {
   });
 }
 
+export function releasesQuery(projectId: string) {
+  return queryOptions({
+    queryKey: queryKeys.releases(projectId),
+    queryFn: () =>
+      fetchGet(() =>
+        api.client.GET("/api/v1/projects/{projectId}/releases", {
+          params: { path: { projectId } },
+        }),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function releaseQuery(projectId: string, releaseId: string) {
+  return queryOptions({
+    queryKey: queryKeys.release(projectId, releaseId),
+    queryFn: () =>
+      fetchGet(() =>
+        api.client.GET("/api/v1/projects/{projectId}/releases/{releaseId}", {
+          params: { path: { projectId, releaseId } },
+        }),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function secretTokensQuery(projectId: string) {
+  return queryOptions({
+    queryKey: queryKeys.secretTokens(projectId),
+    queryFn: async () => {
+      const { data, error, response } = await api.client.GET(
+        "/api/v1/projects/{projectId}/secret-tokens",
+        { params: { path: { projectId } } },
+      );
+      if (error !== undefined || data === undefined) {
+        return api.unwrap({ data, error, response });
+      }
+      return data;
+    },
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
 /** Invalidate exactly one domain list/detail after a mutation. */
 export function useInvalidateDomain(): {
   invalidateWorkspaces: () => Promise<void>;
@@ -562,6 +618,9 @@ export function useInvalidateDomain(): {
   invalidateEnvironments: (projectId: string) => Promise<void>;
   invalidateOrigins: (projectId: string) => Promise<void>;
   invalidateKeys: (projectId: string) => Promise<void>;
+  invalidateReleases: (projectId: string) => Promise<void>;
+  invalidateRelease: (projectId: string, releaseId: string) => Promise<void>;
+  invalidateSecretTokens: (projectId: string) => Promise<void>;
   invalidateProjectMetrics: (projectId: string) => Promise<void>;
   invalidateIssues: (projectId: string) => Promise<void>;
   invalidateIssue: (issueId: string) => Promise<void>;
@@ -590,6 +649,16 @@ export function useInvalidateDomain(): {
       client.invalidateQueries({ queryKey: queryKeys.origins(projectId) }),
     invalidateKeys: (projectId: string) =>
       client.invalidateQueries({ queryKey: queryKeys.keys(projectId) }),
+    invalidateReleases: (projectId: string) =>
+      client.invalidateQueries({ queryKey: queryKeys.releases(projectId) }),
+    invalidateRelease: (projectId: string, releaseId: string) =>
+      client.invalidateQueries({
+        queryKey: queryKeys.release(projectId, releaseId),
+      }),
+    invalidateSecretTokens: (projectId: string) =>
+      client.invalidateQueries({
+        queryKey: queryKeys.secretTokens(projectId),
+      }),
     invalidateProjectMetrics: (projectId: string) =>
       client.invalidateQueries({
         queryKey: ["projects", projectId, "metrics"],

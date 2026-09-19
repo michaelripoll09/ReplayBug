@@ -6,6 +6,13 @@ import {
   setUser,
   close,
 } from "@replaybug/sdk";
+import {
+  MINIFIED_RELEASE_BUTTON_LABEL,
+  MINIFIED_RELEASE_SCENARIO_ID,
+  MINIFIED_RELEASE_TEST_ID,
+  MINIFIED_RELEASE_VERSION,
+  triggerMinifiedReleaseError,
+} from "./scenarios/minified-release-error.js";
 
 /**
  * ReplayBug Demo App - Telemetry verification scenarios
@@ -24,11 +31,16 @@ export function App(): React.JSX.Element {
   const ignoredInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize SDK on mount
+  // The release defaults to the deterministic RS-11 constant so a production
+  // build served without an explicit env release still reports the exact
+  // release string the RS-12 E2E creates via the CLI. The E2E overrides it
+  // with VITE_REPLAYBUG_RELEASE set to the same constant.
+  const release =
+    import.meta.env.VITE_REPLAYBUG_RELEASE ?? MINIFIED_RELEASE_VERSION;
   useEffect(() => {
     const dsn = import.meta.env.VITE_REPLAYBUG_DSN;
     const environment =
       import.meta.env.VITE_REPLAYBUG_ENVIRONMENT ?? "development";
-    const release = import.meta.env.VITE_REPLAYBUG_RELEASE ?? "demo@0.1.0";
 
     if (!dsn) {
       console.log("[Demo] No DSN provided, telemetry disabled");
@@ -113,6 +125,17 @@ export function App(): React.JSX.Element {
     setLastError("User cleared");
   };
 
+  const triggerMinifiedReleaseErrorScenario = () => {
+    try {
+      triggerMinifiedReleaseError();
+    } catch (error) {
+      captureException(error as Error, {
+        scenario: MINIFIED_RELEASE_SCENARIO_ID,
+      });
+      setLastError(`Exception captured: ${(error as Error).message}`);
+    }
+  };
+
   const triggerNavigationClickError = () => {
     // Navigate (simulated via hash change)
     window.location.hash = "step1";
@@ -185,8 +208,7 @@ export function App(): React.JSX.Element {
           {import.meta.env.VITE_REPLAYBUG_ENVIRONMENT ?? "development"}
         </p>
         <p>
-          <strong>Release:</strong>{" "}
-          {import.meta.env.VITE_REPLAYBUG_RELEASE ?? "demo@0.1.0"}
+          <strong>Release:</strong> {release}
         </p>
         {lastError && (
           <p style={{ color: "#c62828" }}>
@@ -227,6 +249,13 @@ export function App(): React.JSX.Element {
             style={{ padding: "0.75rem 1rem" }}
           >
             5. Navigation → Click → Error
+          </button>
+          <button
+            onClick={triggerMinifiedReleaseErrorScenario}
+            style={{ padding: "0.75rem 1rem" }}
+            data-testid={MINIFIED_RELEASE_TEST_ID}
+          >
+            {MINIFIED_RELEASE_BUTTON_LABEL}
           </button>
         </div>
       </section>

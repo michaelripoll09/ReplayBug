@@ -72,6 +72,8 @@ export interface paths {
               checks: {
                 /** @enum {unknown} */
                 database: "up";
+                /** @enum {string} */
+                artifactStorage: "up" | "down" | "unknown";
               };
             };
           };
@@ -88,6 +90,8 @@ export interface paths {
               checks: {
                 /** @enum {unknown} */
                 database: "down";
+                /** @enum {string} */
+                artifactStorage: "up" | "down" | "unknown";
               };
             };
           };
@@ -1667,6 +1671,771 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{projectId}/secret-tokens": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              id: string;
+              projectId: string;
+              kind: string;
+              name: string;
+              prefix: string;
+              createdAt: string;
+              lastUsedAt: null | string;
+              revokedAt: null | string;
+            }[];
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Default Response */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              id: string;
+              projectId: string;
+              kind: string;
+              name: string;
+              prefix: string;
+              token: string;
+              createdAt: string;
+              lastUsedAt?: null | string;
+              revokedAt?: null | string;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/secret-tokens/{tokenId}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          tokenId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              id: string;
+              projectId: string;
+              kind: string;
+              name: string;
+              prefix: string;
+              createdAt: string;
+              lastUsedAt: null | string;
+              revokedAt: null | string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/cli/project": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Resolve the owning project for a CLI secret token. Bearer-only authentication; never send credentials in query strings. */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              projectId: string;
+              projectName: string;
+              projectSlug: string;
+              /** Format: uuid */
+              workspaceId: string;
+              workspaceName: string;
+              timezone: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/cli/releases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List project-scoped releases in deterministic order (created_at, then version) with artifact counts. Bearer-only authentication; never exposes credentials. */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              releases: {
+                version: string;
+                commit: null | string;
+                artifactCount: number;
+                /** Format: date-time */
+                createdAt: string;
+              }[];
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    /** @description Create a project-scoped release. Idempotent: identical re-creates return 200 with created=false; differing identity metadata returns 409 RELEASE_VERSION_CONFLICT. Bearer-only authentication. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            version: string;
+            commitSha?: string;
+            repositoryUrl?: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              release: {
+                /** Format: uuid */
+                id: string;
+                version: string;
+                commit: null | string;
+                repositoryUrl: null | string;
+                /** Format: date-time */
+                createdAt: string;
+              };
+              created: boolean;
+            };
+          };
+        };
+        /** @description Default Response */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              release: {
+                /** Format: uuid */
+                id: string;
+                version: string;
+                commit: null | string;
+                repositoryUrl: null | string;
+                /** Format: date-time */
+                createdAt: string;
+              };
+              created: boolean;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/cli/releases/{version}/artifacts/check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Preflight a bounded artifact manifest (max ~500 entries, ~250 MiB aggregate) for a release. Per-artifact verdict: upload (not stored), exists (same path+hash stored), conflict (same path, different hash). Advisory only — the server revalidates everything at upload and never trusts client hashes. Bearer-only authentication. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          version: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            artifacts: {
+              artifactPath: string;
+              artifactType: string;
+              contentHash: string;
+              sizeBytes: number;
+            }[];
+          };
+        };
+      };
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              release: {
+                /** Format: uuid */
+                id: string;
+                version: string;
+              };
+              results: {
+                artifactPath: string;
+                artifactType: string;
+                contentHash: string;
+                sizeBytes: number;
+                /** @enum {string} */
+                verdict: "upload" | "exists" | "conflict";
+              }[];
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        413: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/cli/releases/{version}/artifacts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Upload one artifact to a release as multipart/form-data with exactly one file part plus text fields artifactPath (canonical POSIX relative path, e.g. assets/app.js.map) and artifactType (source_map for .map, minified_asset for .js/.mjs/.cjs). Server-side SHA-256 + size; `.map` must be Source Map v3; same path+hash is idempotent (200 created=false), same path with different bytes is 409 ARTIFACT_PATH_CONFLICT with no overwrite. Bearer-only authentication. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          version: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              artifact: {
+                /** Format: uuid */
+                id: string;
+                artifactPath: string;
+                /** @enum {string} */
+                artifactType: "source_map" | "minified_asset";
+                contentHash: string;
+                sizeBytes: number;
+                /** Format: date-time */
+                createdAt: string;
+              };
+              created: boolean;
+            };
+          };
+        };
+        /** @description Default Response */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              artifact: {
+                /** Format: uuid */
+                id: string;
+                artifactPath: string;
+                /** @enum {string} */
+                artifactType: "source_map" | "minified_asset";
+                contentHash: string;
+                sizeBytes: number;
+                /** Format: date-time */
+                createdAt: string;
+              };
+              created: boolean;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        413: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{projectId}/issues": {
     parameters: {
       query?: never;
@@ -2188,6 +2957,68 @@ export interface paths {
                     sdkVersion: string;
                     event: string;
                   };
+              symbolication?: {
+                status: string;
+                rawFrames: {
+                  filename: string;
+                  function: string;
+                  lineno: number;
+                  colno: number;
+                  inApp: boolean;
+                }[];
+                mappedFrames: {
+                  filename: string;
+                  source: string;
+                  function: string;
+                  name: null | string;
+                  line: number;
+                  column: number;
+                  inApplication: boolean;
+                  mapped: boolean;
+                }[];
+                mappedFrameCount: number;
+              };
+              diagnostic?: {
+                symbolicationStatus: null | string;
+                rawFrames: {
+                  filename?: string;
+                  function?: string;
+                  lineno?: number;
+                  colno?: number;
+                  inApp?: boolean;
+                  source?: string;
+                  name?: null | string;
+                  line?: number;
+                  column?: number;
+                  inApplication?: boolean;
+                  mapped?: boolean;
+                }[];
+                mappedFrames:
+                  | null
+                  | {
+                      filename: string;
+                      source: string;
+                      function: string;
+                      name: null | string;
+                      line: number;
+                      column: number;
+                      inApplication: boolean;
+                      mapped: boolean;
+                    }[];
+                preferredStack: {
+                  filename?: string;
+                  function?: string;
+                  lineno?: number;
+                  colno?: number;
+                  inApp?: boolean;
+                  source?: string;
+                  name?: null | string;
+                  line?: number;
+                  column?: number;
+                  inApplication?: boolean;
+                  mapped?: boolean;
+                }[];
+              };
             };
           };
         };
@@ -3145,6 +3976,172 @@ export interface paths {
               code: string;
               message: string;
               requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/releases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List project releases with artifact and occurrence counts for the dashboard. Session auth; all project members may read. */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              version: string;
+              commitSha: null | string;
+              repositoryUrl: null | string;
+              /** Format: date-time */
+              createdAt: string;
+              artifactCount: number;
+              sourceMapCount: number;
+              minifiedAssetCount: number;
+              occurrenceCount: number;
+              hasSourceMaps: boolean;
+            }[];
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{projectId}/releases/{releaseId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Release detail with artifact metadata (path/type/hash/size, never storage keys or file bytes). Session auth; all project members may read. */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+          releaseId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              version: string;
+              commitSha: null | string;
+              repositoryUrl: null | string;
+              /** Format: date-time */
+              createdAt: string;
+              artifactCount: number;
+              sourceMapCount: number;
+              minifiedAssetCount: number;
+              occurrenceCount: number;
+              hasSourceMaps: boolean;
+              artifacts: {
+                /** Format: uuid */
+                id: string;
+                artifactPath: string;
+                /** @enum {string} */
+                artifactType: "source_map" | "minified_asset";
+                contentHash: string;
+                sizeBytes: number;
+                /** Format: date-time */
+                createdAt: string;
+              }[];
             };
           };
         };

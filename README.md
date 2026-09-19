@@ -4,17 +4,15 @@ Developer observability for reproducible bugs: privacy-safe browser failure
 context, grouped issues, session timelines, and Playwright reproduction
 tests — on a self-hostable stack with no paid services.
 
-> **Status: Block 6 issues dashboard.** Auth, tenancy, onboarding,
-> dashboard shell, settings, typed OpenAPI client, Chromium E2E, the browser
-> SDK, public ingest, and the asynchronous processing pipeline (transactional
-> outbox → pg-boss → normalization → deterministic fingerprinting → issue
-> grouping → aggregates → regression handling → PostgreSQL NOTIFY) exist with
-> real PostgreSQL — **and** the issue workflow API + dashboard now consume
-> them: issue list/detail/occurrences with search/filter/sort/pagination,
-> project metrics, status/assignment/tags/comments/activity, sessions and
-> timelines, notifications, and SSE realtime invalidation. Source maps,
-> releases, Playwright reproduction generation, retention cleanup and
-> Ollama analysis are explicitly not built yet.
+> **Status: Block 7 releases + source maps.** Everything from Block 6
+> (auth, tenancy, onboarding, dashboard shell, issue workflow API +
+> dashboard, SSE realtime) still holds — **and** releases are now
+> CLI-managed: secret project tokens, `releases create/list`, source-map
+> upload to local artifact storage, worker symbolication before
+> fingerprinting, source-mapped stacks with raw fallback in the dashboard,
+> and source-mapped grouping (same original source groups into one issue
+> across releases). Playwright reproduction generation, retention cleanup
+> and Ollama analysis are explicitly not built yet.
 
 ## What exists today
 
@@ -46,7 +44,9 @@ tests — on a self-hostable stack with no paid services.
   with `{code,message,requestId,details}` normalization. `pnpm api:check`
   regenerates and fails on drift; CI runs it.
 - Fastify API at `apps/api` with `GET /health/live`, `GET /health/ready`
-  (PostgreSQL check), `GET /api/v1/meta`, request IDs, contracts-based
+  (PostgreSQL readiness plus informational `checks.artifactStorage`
+  `up|down|unknown` — storage never flips readiness, so ingest survives
+  storage outages), `GET /api/v1/meta`, request IDs, contracts-based
   error envelope, and OpenAPI docs in non-production (`/docs`)
 - Better Auth email/password at `/api/auth/*` with PostgreSQL persistence,
   HttpOnly + Secure-in-production + SameSite Lax cookies, session rotation,
@@ -67,27 +67,51 @@ tests — on a self-hostable stack with no paid services.
   pg-boss lifecycle, `replaybug.process-event` consumer, transactional outbox
   dispatcher (`FOR UPDATE SKIP LOCKED`), reconciliation loop, bounded retries,
   poison-job visibility, graceful shutdown
+- Secret project tokens (`rb_sk_…`, owner/admin managed, one-time reveal,
+  immediate revocation) and Bearer-only CLI auth, kept strictly separate
+  from public ingest keys and dashboard sessions (see ADR `0002` and
+  `docs/cli.md`)
+- CLI-managed releases (`replaybug projects info`, `releases create/list`,
+  `sourcemaps upload` with preflight skip-existing and conflict abort) and
+  release/artifacts APIs with idempotent creates and 409s on conflicting
+  identity metadata (see `docs/cli.md`)
+- Local artifact storage (`packages/artifacts`, `REPLAYBUG_ARTIFACT_DIR`,
+  `replaybug_artifacts` Docker volume): atomic writes, server-generated
+  keys, API-write/worker-read, outage degradation (see
+  `docs/self-hosting.md` and `docs/architecture/source-maps.md`)
+- Worker symbolication before fingerprinting (`@jridgewell/trace-mapping`,
+  no network, remote `sourceMappingURL` never fetched): mapped stacks by
+  default with raw fallback, raw+mapped retention, per-position partial
+  mapping, and honest `map_not_found`/`invalid_map`/`storage_unavailable`
+  states (see `docs/architecture/source-maps.md`)
 - Issue processing: deterministic fingerprinting (exception,
   unhandled rejection, console error, network, message; custom override on
-  manual capture), issue grouping with `UNIQUE (project_id, fingerprint)`,
+  manual capture), now preferring source-mapped frames so the same
+  original source groups into one issue across releases (release stays
+  excluded), issue grouping with `UNIQUE (project_id, fingerprint)`,
   occurrence and distinct-session aggregates, first/last seen and
   first/last release (out-of-order safe), regression reopen with activity and
   assignee notification, ignored/investigating semantics, and
   `pg_notify replaybug_project_updates`
+- Release/token dashboard: release list/detail (counts, artifact metadata,
+  never `storage_key`), secret-token settings with one-time modal, issue
+  stacks defaulting to mapped with a Source mapped/Raw toggle
 - Real Drizzle versioned migrations (`packages/db/drizzle`) and dev-only seed
-  (`pnpm db:seed`: demo user/workspace/project/prod env/dev env/localhost origin)
+  (`pnpm db:seed`: demo user/workspace/project/prod env/dev env/localhost origin;
+  creates no tokens, releases, or artifact records)
 - PostgreSQL 17 via Docker Compose with healthcheck and persistent volume
-- GitHub Actions CI (format, lint, typecheck, tests with PostgreSQL, OpenAPI
-  drift check, build, Playwright Chromium E2E including the worker E2E)
+- GitHub Actions CI (format, lint, typecheck, tests with PostgreSQL on 5544
+  plus hermetic temp-dir artifact storage, OpenAPI
+  drift check, build, Playwright Chromium E2E including the worker E2E and
+  the minified source-map full-flow E2E)
 
 ## What is explicitly not built yet
 
-Release management and source maps (stacks render raw/unsymbolicated),
-Playwright reproduction generator, retention cleanup, invitation cleanup,
-Ollama analysis, GitHub OAuth, CLI secret tokens and public demo mode.
-Fingerprinting runs on raw sanitized stacks until source maps exist, so
-minified frames group by minified location. No fake metrics, charts or
-screenshots. See `` for the full
+Playwright reproduction generator, retention cleanup (artifact blobs only
+accumulate — plan volume growth), invitation cleanup,
+Ollama analysis, GitHub OAuth and public demo mode.
+No fake metrics, charts or screenshots.
+See `` for the full
 plan and `docs/architecture/worker.md` for what the worker does today.
 
 ## Stack
@@ -137,7 +161,11 @@ marked non-functional; the key is never shown again. Rotate via
 `POST /api/v1/projects/:id/keys/public/rotate` (owner/admin).
 
 Docker workflow: `docker compose up -d postgres` provides PostgreSQL 17 on
-`5544->5432` with healthcheck and persistent volume. Migrations are
+`5544->5432` with healthcheck and persistent volume. Release artifacts live
+in the `replaybug_artifacts` named volume (container path
+`/var/lib/replaybug/artifacts`, dev default `~/.replaybug/artifacts` via
+`REPLAYBUG_ARTIFACT_DIR`); back it up alongside the database (see
+`docs/self-hosting.md`). Migrations are
 forward-only Drizzle files in `packages/db/drizzle`; never edit released
 migrations.
 
@@ -193,7 +221,8 @@ replaybug/
 │  └─ demo/       # Deliberately buggy Vite app + Chromium E2E suites
 ├─ packages/
 │  ├─ sdk/            # Browser SDK (capture, batching, privacy defaults)
-│  ├─ cli/            # replaybug --version/--help
+│  ├─ cli/            # replaybug CLI (projects/releases/sourcemaps, secret-token auth)
+│  ├─ artifacts/      # ArtifactStorage seam + local backend + path/key policy
 │  ├─ db/             # pg + Drizzle schema/migrations/repos/fingerprinting
 │  ├─ contracts/      # Zod telemetry protocol + tenancy DTOs
 │  ├─ api-client/     # Generated OpenAPI client (openapi-fetch + types)
@@ -202,10 +231,13 @@ replaybug/
 │  └─ config/         # Shared tsconfig presets
 ├─ docs/
 │  ├─ architecture.md            # architecture index
+│  ├─ architecture/source-maps.md
 │  ├─ architecture/tenancy.md
 │  ├─ architecture/frontend.md
 │  ├─ architecture/worker.md
 │  ├─ architecture/fingerprinting.md
+│  ├─ cli.md                     # CLI reference
+│  ├─ self-hosting.md            # artifact storage operations
 │  ├─ specs/replaybug-master-spec.md
 │  └─ adr/
 ├─ scripts/           # seed-dev, worker-latency-smoke

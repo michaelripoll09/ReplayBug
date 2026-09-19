@@ -1,24 +1,41 @@
 {
   "name": "@replaybug/cli",
   "version": "0.1.0",
-  "description": "ReplayBug command-line interface (foundation: --version and --help only)",
+  "description": "ReplayBug command-line interface: releases and source-map uploads over secret-token auth",
   "license": "MIT",
   "type": "module",
   "bin": {
     "replaybug": "./bin/replaybug.js"
   },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": [
-    "bin"
+    "bin",
+    "dist"
   ],
   "scripts": {
-    "build": "echo \"@replaybug/cli: no build step (plain Node bin)\"",
+    "build": "tsup src/bin.ts src/index.ts --format esm --dts --sourcemap --clean --out-dir dist",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@replaybug/artifacts": "workspace:*",
+    "commander": "^14.0.3"
+  },
   "devDependencies": {
+    "@replaybug/api": "workspace:*",
     "@replaybug/config": "workspace:*",
+    "@replaybug/db": "workspace:*",
     "@types/node": "22.20.3",
+    "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "5.0.1"
   }

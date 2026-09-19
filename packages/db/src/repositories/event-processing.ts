@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { events, projects } from "../schema.js";
-import type { DbTransaction } from "./db-types.js";
+import type { DbOrTx, DbTransaction } from "./db-types.js";
 
 export type EventProcessingState = "pending" | "processed" | "rejected";
 
@@ -49,6 +49,60 @@ export async function lockEventForProcessing(
     .limit(1)
     .for("update", { of: events });
   return rows[0];
+}
+
+/**
+ * Immutable preload for RS-08 symbolication (step A).
+ *
+ * Reads the event WITHOUT a row lock so the worker can resolve artifacts
+ * and run source-map math (file I/O) before the issue transaction begins.
+ * Events are immutable after ingest, so the payload observed here matches
+ * the locked row inside the transaction. Returns undefined when the event
+ * does not exist (terminal: acknowledge without retrying).
+ */
+export interface EventSymbolicationPreload {
+  id: string;
+  projectId: string;
+  release: string | null;
+  eventType: string;
+  payloadJson: unknown;
+}
+
+export async function getEventForSymbolication(
+  db: DbOrTx,
+  eventId: string,
+): Promise<EventSymbolicationPreload | undefined> {
+  const rows = await db
+    .select({
+      id: events.id,
+      projectId: events.projectId,
+      release: events.release,
+      eventType: events.eventType,
+      payloadJson: events.payloadJson,
+    })
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1);
+  return rows[0];
+}
+
+/**
+ * Persists the precomputed RS-08 symbolication result as JSONB enrichment
+ * (step F). The public-ingest `payload_json` is never touched — raw frames
+ * live on inside the enrichment, never overwritten. Call inside the issue
+ * transaction, after locking the event and before grouping/aggregates.
+ */
+export async function persistEventSymbolication(
+  tx: DbTransaction,
+  input: {
+    eventId: string;
+    symbolication: Record<string, unknown>;
+  },
+): Promise<void> {
+  await tx
+    .update(events)
+    .set({ symbolicationJson: input.symbolication })
+    .where(eq(events.id, input.eventId));
 }
 
 /**

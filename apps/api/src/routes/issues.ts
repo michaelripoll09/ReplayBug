@@ -358,6 +358,97 @@ const eventDataJson = {
   ],
 } as const;
 
+const eventSymbolicationRawFrameJson = {
+  type: "object",
+  required: ["filename", "function", "lineno", "colno", "inApp"],
+  properties: {
+    filename: { type: "string" },
+    function: { type: "string" },
+    lineno: { type: "number" },
+    colno: { type: "number" },
+    inApp: { type: "boolean" },
+  },
+} as const;
+
+const eventSymbolicationMappedFrameJson = {
+  type: "object",
+  required: [
+    "filename",
+    "source",
+    "function",
+    "name",
+    "line",
+    "column",
+    "inApplication",
+    "mapped",
+  ],
+  properties: {
+    filename: { type: "string" },
+    source: { type: "string" },
+    function: { type: "string" },
+    name: { type: ["string", "null"] },
+    line: { type: "number" },
+    column: { type: "number" },
+    inApplication: { type: "boolean" },
+    mapped: { type: "boolean" },
+  },
+} as const;
+
+const eventSymbolicationJson = {
+  type: "object",
+  required: ["status", "rawFrames", "mappedFrames", "mappedFrameCount"],
+  properties: {
+    status: { type: "string" },
+    rawFrames: { type: "array", items: eventSymbolicationRawFrameJson },
+    mappedFrames: { type: "array", items: eventSymbolicationMappedFrameJson },
+    mappedFrameCount: { type: "number" },
+  },
+} as const;
+
+/**
+ * RS-10 event diagnostic: fixed allowlist shape, never an arbitrary DB
+ * JSON dump. `symbolicationStatus` echoes the persisted worker status (null
+ * when never symbolicated); `mappedFrames` is null unless a map applied;
+ * `preferredStack` is the default view (`mappedFrames ?? rawFrames`).
+ * Raw-frame items stay permissive (ingested stacks may omit coordinates);
+ * mapped items are strict (the worker guarantees them).
+ */
+const diagnosticFrameJson = {
+  type: "object",
+  properties: {
+    filename: { type: "string" },
+    function: { type: "string" },
+    lineno: { type: "number" },
+    colno: { type: "number" },
+    inApp: { type: "boolean" },
+    source: { type: "string" },
+    name: { type: ["string", "null"] },
+    line: { type: "number" },
+    column: { type: "number" },
+    inApplication: { type: "boolean" },
+    mapped: { type: "boolean" },
+  },
+} as const;
+
+const eventDiagnosticJson = {
+  type: "object",
+  required: [
+    "symbolicationStatus",
+    "rawFrames",
+    "mappedFrames",
+    "preferredStack",
+  ],
+  properties: {
+    symbolicationStatus: { type: ["string", "null"] },
+    rawFrames: { type: "array", items: diagnosticFrameJson },
+    mappedFrames: {
+      type: ["array", "null"],
+      items: eventSymbolicationMappedFrameJson,
+    },
+    preferredStack: { type: "array", items: diagnosticFrameJson },
+  },
+} as const;
+
 const eventDetailJson = {
   type: "object",
   required: [
@@ -385,6 +476,11 @@ const eventDetailJson = {
     pageUrl: { type: ["string", "null"] },
     processingState: { type: "string" },
     data: eventDataJson,
+    // RS-08 persisted enrichment (validated worker shape) + RS-10 derived
+    // diagnostic. Both optional so older captures validate unchanged; the
+    // service populates them on every event detail response.
+    symbolication: eventSymbolicationJson,
+    diagnostic: eventDiagnosticJson,
   },
 } as const;
 

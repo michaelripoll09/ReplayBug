@@ -1,5 +1,8 @@
+import { eventSymbolicationSchema } from "@replaybug/contracts";
 import type {
   EventDetail,
+  EventDiagnostic,
+  EventSymbolication,
   IssueActivity,
   IssueComment,
   IssueSummary,
@@ -290,6 +293,9 @@ function strArray(value: unknown, max = 10): string[] {
 /** Maximum stack frames exposed per exception value in event detail. */
 const EVENT_DETAIL_MAX_FRAMES = 50;
 
+/** Maximum frames carried by the RS-10 event diagnostic (same bound). */
+const EVENT_DIAGNOSTIC_MAX_FRAMES = 50;
+
 function safeFrames(value: unknown): Array<{
   filename?: string;
   function?: string;
@@ -447,7 +453,106 @@ function sanitizeEventData(
   }
 }
 
+/**
+ * RS-10 event diagnostic helpers.
+ *
+ * `parseEventSymbolication` validates the worker-persisted
+ * `symbolication_json` against the contract shape: valid enrichment passes
+ * through, missing/invalid values degrade to `null` (never an arbitrary DB
+ * JSON dump on the DTO).
+ *
+ * `toEventDiagnostic` derives `{ symbolicationStatus, preferredStack
+ * (= mapped ?? raw), rawFrames, mappedFrames nullable }`:
+ * - `rawFrames` echoes the worker's raw frames when present, else the
+ *   ingested exception stack (same bound as event detail).
+ * - `mappedFrames` is the symbolicated view only when the persisted status
+ *   is `mapped`/`partially_mapped` with at least one frame; every other
+ *   status (or absent enrichment) yields `null` so the UI renders Raw with
+ *   the honest persisted status.
+ */
+function parseEventSymbolication(value: unknown): EventSymbolication | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = eventSymbolicationSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function payloadExceptionFrames(payload: unknown): Array<{
+  filename?: string;
+  function?: string;
+  lineno?: number;
+  colno?: number;
+  inApp?: boolean;
+}> {
+  const p = asRecord(payload);
+  const values = Array.isArray(p["values"]) ? p["values"] : [];
+  const out: Array<{
+    filename?: string;
+    function?: string;
+    lineno?: number;
+    colno?: number;
+    inApp?: boolean;
+  }> = [];
+  for (const v of values) {
+    for (const frame of safeFrames(asRecord(v)["stacktrace"])) {
+      out.push(frame);
+      if (out.length >= EVENT_DIAGNOSTIC_MAX_FRAMES) {
+        return out;
+      }
+    }
+  }
+  return out;
+}
+
+function toEventDiagnostic(
+  eventType: string,
+  payload: unknown,
+  symbolication: EventSymbolication | null,
+): EventDiagnostic {
+  const rawFrames =
+    symbolication !== null
+      ? symbolication.rawFrames.map((f) => ({
+          filename: f.filename,
+          function: f.function,
+          lineno: f.lineno,
+          colno: f.colno,
+          inApp: f.inApp,
+        }))
+      : eventType === "exception"
+        ? payloadExceptionFrames(payload)
+        : [];
+  const mapped =
+    symbolication !== null &&
+    (symbolication.status === "mapped" ||
+      symbolication.status === "partially_mapped") &&
+    symbolication.mappedFrames.length > 0
+      ? symbolication.mappedFrames.map((f) => ({
+          filename: f.filename,
+          source: f.source,
+          function: f.function,
+          name: f.name,
+          line: f.line,
+          column: f.column,
+          inApplication: f.inApplication,
+          mapped: f.mapped,
+        }))
+      : null;
+  return {
+    symbolicationStatus: symbolication === null ? null : symbolication.status,
+    rawFrames,
+    mappedFrames: mapped,
+    preferredStack: mapped ?? rawFrames,
+  };
+}
+
 export function toEventDetailDto(row: TelemetryRepo.EventRow): EventDetail {
+  const symbolication = parseEventSymbolication(row.symbolicationJson);
+  const diagnostic = toEventDiagnostic(
+    row.eventType,
+    row.payloadJson,
+    symbolication,
+  );
   const base = {
     eventId: row.id,
     sessionId: row.telemetrySessionId,
@@ -463,6 +568,11 @@ export function toEventDetailDto(row: TelemetryRepo.EventRow): EventDetail {
       row.processingState === "rejected"
         ? row.processingState
         : ("pending" as const),
+    // RS-08 persisted enrichment (validated worker shape only) plus the
+    // RS-10 derived diagnostic. Invalid stored JSON degrades to
+    // `{ symbolication: absent, diagnostic: raw-only }`, never a dump.
+    ...(symbolication === null ? {} : { symbolication }),
+    diagnostic,
   };
   const data = sanitizeEventData(row.eventType, row.payloadJson);
   switch (row.eventType) {

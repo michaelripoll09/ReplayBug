@@ -1,4 +1,8 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ARTIFACT_MAX_FILE_BYTES } from "@replaybug/artifacts";
 import { loadApiConfigFromEnv } from "./config.js";
 
 describe("loadApiConfigFromEnv", () => {
@@ -50,6 +54,47 @@ describe("loadApiConfigFromEnv", () => {
   it("accepts disabled Ollama settings without breaking startup", () => {
     const config = loadApiConfigFromEnv(baseEnv);
     expect(config.ollamaUrl).toBeUndefined();
+  });
+
+  it("defaults the artifact per-file cap to 25 MiB", () => {
+    const config = loadApiConfigFromEnv(baseEnv);
+    expect(config.artifactMaxFileBytes).toBe(DEFAULT_ARTIFACT_MAX_FILE_BYTES);
+  });
+
+  it("rejects an invalid artifact per-file cap", () => {
+    expect(() =>
+      loadApiConfigFromEnv({
+        ...baseEnv,
+        REPLAYBUG_ARTIFACT_MAX_FILE_BYTES: "0",
+      }),
+    ).toThrow(/Invalid API configuration/);
+    expect(() =>
+      loadApiConfigFromEnv({
+        ...baseEnv,
+        REPLAYBUG_ARTIFACT_MAX_FILE_BYTES: "not-a-number",
+      }),
+    ).toThrow(/Invalid API configuration/);
+  });
+
+  it("accepts an explicit artifact dir that is a safe absolute path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "replaybug-config-test-"));
+    const config = loadApiConfigFromEnv({
+      ...baseEnv,
+      REPLAYBUG_ARTIFACT_DIR: dir,
+    });
+    expect(config.artifactDir).toBe(dir);
+  });
+
+  it("fails fast on an unsafe explicit artifact dir", () => {
+    expect(() =>
+      loadApiConfigFromEnv({
+        ...baseEnv,
+        REPLAYBUG_ARTIFACT_DIR: "packages/evil",
+      }),
+    ).toThrow(/REPLAYBUG_ARTIFACT_DIR/);
+    expect(() =>
+      loadApiConfigFromEnv({ ...baseEnv, REPLAYBUG_ARTIFACT_DIR: "/" }),
+    ).toThrow(/REPLAYBUG_ARTIFACT_DIR/);
   });
 
   it("merges explicit trusted origins with the web URL", () => {

@@ -4,6 +4,23 @@ export { createDbClient, checkDbHealth } from "./client.js";
 export type { DbClient, HealthCheckable } from "./client.js";
 export { schema } from "./schema.js";
 export {
+  ARTIFACT_TYPES,
+  RELEASE_VERSION_MAX_LENGTH,
+  REPOSITORY_URL_MAX_LENGTH,
+  ARTIFACT_PATH_MAX_LENGTH,
+  STORAGE_KEY_MAX_LENGTH,
+  ReleaseValidationError,
+  validateArtifactPath,
+  validateArtifactType,
+  validateCommitSha,
+  validateContentHash,
+  validateReleaseVersion,
+  validateRepositoryUrl,
+  validateSizeBytes,
+  validateStorageKey,
+} from "./releases.js";
+export type { ArtifactType } from "./releases.js";
+export {
   users,
   sessions,
   accounts,
@@ -15,6 +32,8 @@ export {
   projectOrigins,
   projectKeys,
   auditLogs,
+  releases,
+  releaseArtifacts,
   telemetrySessions,
   issues,
   issueActivity,
@@ -47,6 +66,7 @@ export {
   hashFingerprint,
   normalizeCustomFingerprint,
   deriveEventProcessingPlan,
+  selectExceptionFingerprintFrames,
 } from "./domain/index.js";
 export type {
   NormalizableStackFrame,
@@ -72,9 +92,16 @@ export {
   deriveAnonymousUserHash,
   PUBLIC_KEY_PREFIX,
   PublicKeyError,
+  generateSecretToken,
+  parseSecretToken,
+  hashSecretToken,
+  verifySecretToken,
+  SECRET_KEY_PREFIX,
+  SecretTokenError,
 } from "./keys-crypto.js";
 export type {
   ParsedPublicKey,
+  ParsedSecretToken,
   DeriveAnonymousUserHashInput,
 } from "./keys-crypto.js";
 export type {
@@ -88,6 +115,14 @@ export * as ProjectRepo from "./repositories/projects.js";
 export * as EnvironmentRepo from "./repositories/environments.js";
 export * as OriginRepo from "./repositories/origins.js";
 export * as ProjectKeyRepo from "./repositories/keys.js";
+export * as ReleaseRepo from "./repositories/releases.js";
+export type {
+  ReleaseRow,
+  ReleaseArtifactRow,
+  CreateReleaseInput,
+  CreateReleaseResult,
+  InsertReleaseArtifactInput,
+} from "./repositories/releases.js";
 export * as AuditRepo from "./repositories/audit.js";
 export * as TelemetryRepo from "./repositories/telemetry.js";
 export * as IssueRepo from "./repositories/issues.js";
@@ -135,12 +170,15 @@ export {
 export type { OutboxRow, PendingOutboxItem } from "./repositories/outbox.js";
 export {
   lockEventForProcessing,
+  getEventForSymbolication,
+  persistEventSymbolication,
   markEventProcessed,
   markEventRejected,
 } from "./repositories/event-processing.js";
 export type {
   EventForProcessing,
   EventProcessingState,
+  EventSymbolicationPreload,
 } from "./repositories/event-processing.js";
 export {
   lockIssueByFingerprint,

@@ -43,7 +43,7 @@ test("E2E3 RBAC owner vs viewer", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Save changes" })).toBeVisible({
     timeout: 15_000,
   });
-  await page.getByRole("tab", { name: "Public Key" }).click();
+  await page.getByRole("tab", { name: "Keys & Tokens" }).click();
   await expect(
     page.getByRole("button", { name: "Rotate public key…" }),
   ).toBeVisible();
@@ -103,7 +103,7 @@ test("E2E3 RBAC owner vs viewer", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(
     0,
   );
-  await page.getByRole("tab", { name: "Public Key" }).click();
+  await page.getByRole("tab", { name: "Keys & Tokens" }).click();
   await expect(
     page.getByRole("button", { name: "Rotate public key…" }),
   ).toHaveCount(0);

@@ -1,9 +1,14 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
+import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { createLogger } from "@replaybug/observability";
+import {
+  LocalArtifactStorage,
+  type ArtifactStorage,
+} from "@replaybug/artifacts";
 import {
   checkDbHealth,
   createDbClient,
@@ -24,6 +29,9 @@ import { registerProjectRoutes } from "./routes/projects.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerOriginRoutes } from "./routes/origins.js";
 import { registerKeyRoutes } from "./routes/keys.js";
+import { registerSecretTokenRoutes } from "./routes/secret-tokens.js";
+import { registerCliRoutes } from "./routes/cli.js";
+import { registerDashboardReleaseRoutes } from "./routes/dashboard-releases.js";
 import { registerIssueRoutes } from "./routes/issues.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerRealtimeRoutes } from "./routes/realtime.js";
@@ -37,6 +45,12 @@ export interface BuildAppOptions {
   checkDatabase?: () => Promise<boolean>;
   dbClient?: DbClient;
   auth?: Auth;
+  /**
+   * RS-06 test seam: integration suites inject temp-dir or failing
+   * storage doubles. Production builds the shared local storage
+   * (explicit `artifactDir` or the `REPLAYBUG_ARTIFACT_DIR` contract).
+   */
+  artifactStorage?: ArtifactStorage;
 }
 
 export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
@@ -62,6 +76,20 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
     maxAge: 86400,
   });
   await app.register(cookie);
+
+  // RS-06 multipart uploads: the per-file cap is enforced by busboy
+  // BEFORE unbounded buffering (over-limit streams surface as
+  // FST_REQ_FILE_TOO_LARGE, mapped to 413 ARTIFACT_TOO_LARGE by the CLI
+  // routes). Single-file uploads: further files are rejected downstream.
+  await app.register(multipart, {
+    limits: {
+      fileSize: config.artifactMaxFileBytes,
+      files: 1,
+      fields: 10,
+      fieldSize: 8192,
+      fieldNameSize: 256,
+    },
+  });
 
   // Interactive OpenAPI docs in non-production only.
   if (config.nodeEnv !== "production") {
@@ -89,6 +117,20 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
           {
             name: "Keys",
             description: "Public ingest key metadata + rotation",
+          },
+          {
+            name: "SecretTokens",
+            description: "Secret project tokens for CLI automation",
+          },
+          {
+            name: "CLI",
+            description:
+              "Project-scoped CLI automation with Bearer secret-token auth",
+          },
+          {
+            name: "Releases",
+            description:
+              "Session-authenticated dashboard release reads with artifact metadata",
           },
           {
             name: "Issues",
@@ -124,6 +166,17 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
             description: "Public telemetry event ingestion",
           },
         ],
+        components: {
+          securitySchemes: {
+            bearerAuth: {
+              type: "http",
+              scheme: "bearer",
+              bearerFormat: "opaque",
+              description:
+                "CLI secret project token (rb_sk_…). Send as Authorization: Bearer <token>. Never send credentials in query strings.",
+            },
+          },
+        },
       },
     });
     await app.register(swaggerUi, {
@@ -159,7 +212,27 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
       }
     });
 
-  await registerHealthRoutes(app, { checkDatabase });
+  // Health is registered after the artifact store resolves so the ready
+  // probe can report storage status (informational only — storage never
+  // flips readiness; see registerHealthRoutes).
+  const artifactStorage =
+    options.artifactStorage ??
+    (config.artifactDir !== undefined
+      ? new LocalArtifactStorage({ root: config.artifactDir })
+      : LocalArtifactStorage.fromEnv());
+  await registerHealthRoutes(app, {
+    checkDatabase,
+    checkArtifactStorage: async (): Promise<boolean> => {
+      try {
+        // Sentinel key that never exists: `false` proves the store answers,
+        // a throw proves it is down. Read-only, never writes, never lists.
+        await artifactStorage.exists("replaybug-health-probe");
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
   await registerMetaRoutes(app, {
     version: config.version,
     environment: config.environment,
@@ -171,7 +244,19 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   await registerEnvironmentRoutes(app, { db, auth });
   await registerOriginRoutes(app, { db, auth });
   await registerKeyRoutes(app, { db, auth });
+  await registerSecretTokenRoutes(app, { db, auth });
+  await registerCliRoutes(app, {
+    db,
+    artifacts: {
+      storage: artifactStorage,
+      maxFileBytes: config.artifactMaxFileBytes,
+      preflightMaxEntries: config.artifactPreflightMaxEntries,
+      aggregateMaxBytes: config.artifactAggregateMaxBytes,
+      stagingDir: config.artifactStagingDir,
+    },
+  });
   await registerIssueRoutes(app, { db, auth });
+  await registerDashboardReleaseRoutes(app, { db, auth });
   await registerNotificationRoutes(app, { db, auth });
 
   // Process-level LISTEN broker (one connection per API process) feeding

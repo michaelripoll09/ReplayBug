@@ -11,7 +11,7 @@
     "preview": "vite preview --port 5173",
     "lint": "eslint src e2e e2e-worker playwright.config.ts playwright.worker.config.ts playwright.shared.ts --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"@replaybug/demo: unit tests live in the SDK/API packages\"",
+    "test": "vitest run",
     "test:e2e": "node e2e/seed.mjs && playwright test --config=playwright.config.ts && node e2e/seed.mjs && playwright test --config=playwright.worker.config.ts"
   },
   "dependencies": {
@@ -35,6 +35,7 @@
     "pg": "^8.23.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.70.0",
-    "vite": "8.3.0"
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
   }
 }

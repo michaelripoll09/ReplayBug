@@ -31,6 +31,94 @@ export const occurrenceListQuerySchema = z.object({
 });
 export type OccurrenceListQuery = z.infer<typeof occurrenceListQuerySchema>;
 
+/**
+ * RS-08 worker source-map enrichment (persisted as JSONB on the event,
+ * exposed on the DTO in RS-10). Statuses mirror the worker's internal
+ * result: full/partial mapping plus the exact degradation cause.
+ * `rawFrames` echoes ingested coordinates verbatim; `mappedFrames` carries
+ * the symbolicated view (`mapped: false` entries preserve raw coordinates
+ * and never fabricate a source). Storage keys are never part of this shape.
+ */
+export const eventSymbolicationStatusSchema = z.enum([
+  "mapped",
+  "partially_mapped",
+  "no_release",
+  "release_not_found",
+  "map_not_found",
+  "invalid_map",
+  "storage_unavailable",
+]);
+export type EventSymbolicationStatus = z.infer<
+  typeof eventSymbolicationStatusSchema
+>;
+
+const symbolicationRawFrameSchema = z.object({
+  filename: z.string(),
+  function: z.string(),
+  lineno: z.number().int().nonnegative(),
+  colno: z.number().int().nonnegative(),
+  inApp: z.boolean(),
+});
+
+const symbolicationMappedFrameSchema = z.object({
+  filename: z.string(),
+  source: z.string(),
+  function: z.string(),
+  name: z.string().nullable(),
+  line: z.number().int().nonnegative(),
+  column: z.number().int().nonnegative(),
+  inApplication: z.boolean(),
+  mapped: z.boolean(),
+});
+
+export const eventSymbolicationSchema = z.object({
+  status: eventSymbolicationStatusSchema,
+  rawFrames: z.array(symbolicationRawFrameSchema),
+  mappedFrames: z.array(symbolicationMappedFrameSchema),
+  mappedFrameCount: z.number().int().nonnegative(),
+});
+export type EventSymbolication = z.infer<typeof eventSymbolicationSchema>;
+
+/**
+ * RS-10 dashboard diagnostic derived from the persisted worker enrichment.
+ * `symbolicationStatus` echoes the persisted status (`null` when the event
+ * was never symbolicated); `mappedFrames` is the symbolicated view (`null`
+ * when no map applied); `rawFrames` always carries the generated-location
+ * view (worker echo, else the ingested stack); `preferredStack` is the
+ * default view (`mappedFrames ?? rawFrames`). Every frame is built
+ * field-by-field from known keys — never an arbitrary DB JSON dump.
+ */
+const diagnosticRawFrameSchema = z.object({
+  filename: z.string().optional(),
+  function: z.string().optional(),
+  lineno: z.number().int().nonnegative().optional(),
+  colno: z.number().int().nonnegative().optional(),
+  inApp: z.boolean().optional(),
+});
+export type DiagnosticRawFrame = z.infer<typeof diagnosticRawFrameSchema>;
+
+const diagnosticMappedFrameSchema = z.object({
+  filename: z.string(),
+  source: z.string(),
+  function: z.string(),
+  name: z.string().nullable(),
+  line: z.number().int().nonnegative(),
+  column: z.number().int().nonnegative(),
+  inApplication: z.boolean(),
+  mapped: z.boolean(),
+});
+export type DiagnosticMappedFrame = z.infer<typeof diagnosticMappedFrameSchema>;
+
+export const eventDiagnosticSchema = z.object({
+  symbolicationStatus: eventSymbolicationStatusSchema.nullable(),
+  rawFrames: z.array(diagnosticRawFrameSchema),
+  mappedFrames: z.array(diagnosticMappedFrameSchema).nullable(),
+  preferredStack: z.array(
+    z.union([diagnosticRawFrameSchema, diagnosticMappedFrameSchema]),
+  ),
+});
+export type EventDiagnostic = z.infer<typeof eventDiagnosticSchema>;
+
 const eventBaseSchema = z.object({
   eventId: z.string().uuid(),
   sessionId: z.string().uuid(),
@@ -41,6 +129,21 @@ const eventBaseSchema = z.object({
   release: z.string().nullable(),
   pageUrl: z.string().nullable(),
   processingState: eventProcessingStateSchema,
+  /**
+   * RS-08 forward-compat: worker source-map enrichment persisted as JSONB
+   * beside the immutable ingest payload. The API populates this from RS-10
+   * on (validated worker JSON only); the field stays optional so older
+   * payloads validate unchanged. Clients must never submit it (ingest
+   * strips it).
+   */
+  symbolication: eventSymbolicationSchema.optional(),
+  /**
+   * RS-10 dashboard diagnostic: `{ symbolicationStatus, preferredStack
+   * (= mapped ?? raw), rawFrames, mappedFrames nullable }`. Always populated
+   * by the API when serving event detail; optional in the contract so
+   * previously captured payloads still validate.
+   */
+  diagnostic: eventDiagnosticSchema.optional(),
 });
 
 const safeFrameSchema = z.object({

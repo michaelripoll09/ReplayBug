@@ -14,7 +14,9 @@ import {
   formatStackFrame,
   normalizeMessage,
   normalizePath,
+  normalizeStackFrame,
   selectTopFrames,
+  type NormalizableStackFrame,
 } from "./normalize.js";
 
 /**
@@ -24,6 +26,25 @@ import {
  * The canonical signature is a JSON array so serialization is stable and
  * never depends on object key order. `release` is deliberately excluded:
  * the same defect must be tracked across deployments.
+ *
+ * RS-09 canonical rule (source-mapped fingerprinting):
+ * 1. An explicit developer `fingerprint` (Block 5 custom grouping) always
+ *    wins: mapped/raw frame selection never runs for custom fingerprints.
+ * 2. When at least one USEFUL mapped in-application frame exists (a mapped
+ *    frame with `in_app: true` that normalizes to a usable canonical frame),
+ *    the fingerprint is derived from the mapped frames (original
+ *    `src/...` location + mapped symbol + original line) so the raw
+ *    generated filename/content-hash does NOT dominate grouping. Release
+ *    stays excluded from the signature.
+ * 3. Partial symbolication is per-position and deterministic: positions with
+ *    a useful mapped in-app frame use the mapped location; positions without
+ *    one fall back to the raw sanitized frame in original stack order. The
+ *    existing `selectTopFrames` (in-app preferred, top 5, columns excluded)
+ *    then applies unchanged.
+ * 4. No-map fallback is unchanged: no release / release missing / map
+ *    missing / invalid / storage unavailable (i.e. no useful mapped in-app
+ *    frame) derives from the raw sanitized stack exactly as before, so
+ *    telemetry stays operational and events are never poisoned.
  */
 
 export const ISSUE_TYPES = [
@@ -80,6 +101,18 @@ export interface DeriveEventInput {
   projectId: string;
   eventType: string;
   payload: unknown;
+  /**
+   * RS-09: pre-selected source-mapped frames for fingerprint derivation.
+   *
+   * Built by the worker from the RS-08 `symbolication_json` enrichment
+   * (per-position: mapped original location where available, raw sanitized
+   * fallback where needed, original stack order). When this list contains
+   * at least one useful in-application frame it replaces the raw stack for
+   * automatic grouping; otherwise the raw stack is used exactly as before.
+   * Custom fingerprints ignore this field entirely. Non-stack event types
+   * ignore it as well.
+   */
+  mappedFrames?: readonly NormalizableStackFrame[] | undefined;
 }
 
 export type EventProcessingPlan =
@@ -197,6 +230,29 @@ function buildDescriptor(
   };
 }
 
+/**
+ * RS-09 frame selection for exception fingerprinting (canonical rule steps
+ * 2–4). Returns the mapped list when it carries at least one useful
+ * in-application frame (in_app + normalizes to a usable canonical frame);
+ * otherwise returns the raw list unchanged. Callers still run
+ * `selectTopFrames` on the result, so in-app preference, the top-5 limit
+ * and column exclusion apply identically to both paths.
+ */
+export function selectExceptionFingerprintFrames(
+  rawFrames: readonly NormalizableStackFrame[],
+  mappedFrames: readonly NormalizableStackFrame[] | undefined,
+): readonly NormalizableStackFrame[] {
+  if (mappedFrames === undefined || mappedFrames.length === 0) {
+    return rawFrames;
+  }
+  for (const frame of mappedFrames) {
+    if (frame.in_app === true && normalizeStackFrame(frame) !== null) {
+      return mappedFrames;
+    }
+  }
+  return rawFrames;
+}
+
 function deriveException(input: DeriveEventInput): EventProcessingPlan {
   const payload = parsePayload(
     exceptionEventPayloadSchema,
@@ -214,7 +270,10 @@ function deriveException(input: DeriveEventInput): EventProcessingPlan {
   const exceptionClass =
     primary.type.trim() === "" ? "Error" : primary.type.trim();
   const message = normalizeMessage(primary.value);
-  const frames = selectTopFrames(primary.stacktrace?.frames ?? []);
+  const rawFrames = primary.stacktrace?.frames ?? [];
+  const frames = selectTopFrames(
+    selectExceptionFingerprintFrames(rawFrames, input.mappedFrames),
+  );
   const custom = normalizeCustomFingerprint(payload.fingerprint);
 
   const components =

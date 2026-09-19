@@ -10,6 +10,13 @@ export type DomainErrorCode =
   | "NOT_FOUND"
   | "VALIDATION_ERROR"
   | "CONFLICT"
+  | "RELEASE_VERSION_CONFLICT"
+  | "ARTIFACT_PATH_INVALID"
+  | "ARTIFACT_PATH_CONFLICT"
+  | "INVALID_ARTIFACT_TYPE"
+  | "INVALID_SOURCE_MAP"
+  | "ARTIFACT_TOO_LARGE"
+  | "ARTIFACT_STORAGE_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
 export class DomainError extends Error {
@@ -49,10 +56,60 @@ export function conflict(message: string, details?: unknown): DomainError {
   return new DomainError("CONFLICT", message, details);
 }
 
+/**
+ * RS-04 release identity conflict: the version exists with different
+ * commit_sha/repository_url. Maps to HTTP 409 with a stable code the CLI
+ * (RS-07) can branch on.
+ */
+export function releaseVersionConflict(
+  message = "Release version already exists with different metadata",
+): DomainError {
+  return new DomainError("RELEASE_VERSION_CONFLICT", message);
+}
+
 export function internalError(
   message = "An unexpected error occurred",
 ): DomainError {
   return new DomainError("INTERNAL_ERROR", message);
+}
+
+/**
+ * RS-06 artifact upload errors. Codes are stable for CLI branching
+ * (RS-07): path/type/map rejections are 400, path conflicts 409,
+ * over-limit payloads 413, storage outages 503 (ingest stays up).
+ */
+export function artifactPathInvalid(
+  message = "Invalid artifact path",
+): DomainError {
+  return new DomainError("ARTIFACT_PATH_INVALID", message);
+}
+
+export function artifactPathConflict(
+  message = "Artifact path already exists with different content",
+): DomainError {
+  return new DomainError("ARTIFACT_PATH_CONFLICT", message);
+}
+
+export function invalidArtifactType(
+  message = "Invalid artifact type",
+): DomainError {
+  return new DomainError("INVALID_ARTIFACT_TYPE", message);
+}
+
+export function invalidSourceMap(message = "Invalid source map"): DomainError {
+  return new DomainError("INVALID_SOURCE_MAP", message);
+}
+
+export function artifactTooLarge(
+  message = "Artifact exceeds the size limit",
+): DomainError {
+  return new DomainError("ARTIFACT_TOO_LARGE", message);
+}
+
+export function artifactStorageUnavailable(
+  message = "Artifact storage is temporarily unavailable",
+): DomainError {
+  return new DomainError("ARTIFACT_STORAGE_UNAVAILABLE", message);
 }
 
 /** Map a domain code to HTTP status. */
@@ -68,6 +125,18 @@ export function statusForCode(code: DomainErrorCode): number {
       return 400;
     case "CONFLICT":
       return 409;
+    case "RELEASE_VERSION_CONFLICT":
+      return 409;
+    case "ARTIFACT_PATH_CONFLICT":
+      return 409;
+    case "ARTIFACT_PATH_INVALID":
+    case "INVALID_ARTIFACT_TYPE":
+    case "INVALID_SOURCE_MAP":
+      return 400;
+    case "ARTIFACT_TOO_LARGE":
+      return 413;
+    case "ARTIFACT_STORAGE_UNAVAILABLE":
+      return 503;
     case "INTERNAL_ERROR":
       return 500;
   }

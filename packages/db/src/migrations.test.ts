@@ -225,6 +225,8 @@ describe("migrations against real PostgreSQL", () => {
       "audit_logs",
       ...TELEMETRY_TABLES,
       ...ISSUE_TABLES,
+      "releases",
+      "release_artifacts",
     ];
 
     await withPool(databaseUrl, async (pool) => {
@@ -345,6 +347,107 @@ describe("migrations against real PostgreSQL", () => {
           expect(row.indexdef).toMatch(/gin_trgm_ops/);
         }
       }
+      // Critical Block 7 structure (RS-04): releases + release_artifacts
+      // with identity uniqueness, bounded metadata CHECKs and FK cascades.
+      const releaseUniques = await pool.query(
+        `SELECT conname FROM pg_constraint
+          WHERE conname IN
+            ('releases_project_version_unique',
+             'release_artifacts_release_path_unique')
+          ORDER BY conname`,
+      );
+      expect(
+        releaseUniques.rows.map((r: { conname: string }) => r.conname),
+      ).toEqual([
+        "release_artifacts_release_path_unique",
+        "releases_project_version_unique",
+      ]);
+
+      const releaseChecks = await pool.query(
+        `SELECT conname FROM pg_constraint
+          WHERE conname IN
+            ('releases_version_check','releases_commit_sha_check',
+             'releases_repository_url_check','release_artifacts_path_check',
+             'release_artifacts_storage_key_check',
+             'release_artifacts_content_hash_check',
+             'release_artifacts_size_check','release_artifacts_type_check')
+          ORDER BY conname`,
+      );
+      expect(
+        releaseChecks.rows.map((r: { conname: string }) => r.conname),
+      ).toEqual([
+        "release_artifacts_content_hash_check",
+        "release_artifacts_path_check",
+        "release_artifacts_size_check",
+        "release_artifacts_storage_key_check",
+        "release_artifacts_type_check",
+        "releases_commit_sha_check",
+        "releases_repository_url_check",
+        "releases_version_check",
+      ]);
+
+      const releaseIndexes = await pool.query(
+        `SELECT indexname FROM pg_indexes
+          WHERE schemaname = 'public' AND indexname IN
+            ('releases_project_created_idx','release_artifacts_release_idx',
+             'release_artifacts_release_hash_idx')
+          ORDER BY indexname`,
+      );
+      expect(
+        releaseIndexes.rows.map((r: { indexname: string }) => r.indexname),
+      ).toEqual([
+        "release_artifacts_release_hash_idx",
+        "release_artifacts_release_idx",
+        "releases_project_created_idx",
+      ]);
+
+      const releaseFks = await pool.query(
+        `SELECT conname, delete_rule FROM (
+           SELECT c.conname,
+                  CASE c.confdeltype
+                    WHEN 'c' THEN 'CASCADE'
+                    WHEN 'n' THEN 'SET NULL'
+                    ELSE c.confdeltype::text
+                  END AS delete_rule
+           FROM pg_constraint c
+           JOIN pg_class t ON t.oid = c.conrelid
+           WHERE c.contype = 'f'
+             AND t.relname IN ('releases','release_artifacts')
+             AND c.conname IN
+               ('releases_project_id_projects_id_fk',
+                'release_artifacts_release_id_releases_id_fk')
+         ) AS fks
+         ORDER BY conname`,
+      );
+      expect(releaseFks.rows).toEqual([
+        {
+          conname: "release_artifacts_release_id_releases_id_fk",
+          delete_rule: "CASCADE",
+        },
+        {
+          conname: "releases_project_id_projects_id_fk",
+          delete_rule: "CASCADE",
+        },
+      ]);
+
+      // Telemetry stays free-text: no FK from events.release to releases.
+      const eventReleaseFk = await pool.query(
+        `SELECT conname FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          WHERE c.contype = 'f' AND t.relname = 'events'
+            AND pg_get_constraintdef(c.oid) ILIKE '%release%'`,
+      );
+      expect(eventReleaseFk.rows.length).toBe(0);
+
+      // RS-08 worker enrichment: nullable JSONB beside the immutable
+      // ingest payload, no FK, no default (null = not symbolicated yet).
+      const symbolicationColumn = await pool.query(
+        `SELECT is_nullable, data_type FROM information_schema.columns
+          WHERE table_name = 'events' AND column_name = 'symbolication_json'`,
+      );
+      expect(symbolicationColumn.rows).toEqual([
+        { is_nullable: "YES", data_type: "jsonb" },
+      ]);
     });
 
     // Second run: no pending migrations, no corruption.
@@ -353,7 +456,7 @@ describe("migrations against real PostgreSQL", () => {
     await withPool(databaseUrl, async (pool) => {
       const tables = await pool.query(
         `SELECT COUNT(*)::int AS count FROM information_schema.tables
-         WHERE table_schema = 'public' AND table_name = ANY($1)`,
+          WHERE table_schema = 'public' AND table_name = ANY($1)`,
         [expectedTables],
       );
       expect(tables.rows[0]?.count).toBe(expectedTables.length);
@@ -361,9 +464,9 @@ describe("migrations against real PostgreSQL", () => {
       const journal = await pool.query(
         `SELECT COUNT(*)::int AS count FROM drizzle.__drizzle_migrations`,
       );
-      // One journal row per migration file (0000 + 0001 + 0002 + 0003),
-      // never duplicated.
-      expect(journal.rows[0]?.count).toBe(4);
+      // One journal row per migration file
+      // (0000 + 0001 + 0002 + 0003 + 0004 + 0005), never duplicated.
+      expect(journal.rows[0]?.count).toBe(6);
     });
   });
 
@@ -581,10 +684,165 @@ describe("migrations against real PostgreSQL", () => {
       // pg_trgm similarity works on the migrated issues table.
       const similar = await pool.query(
         `SELECT title FROM issues
-         WHERE title % 'TypeError boom' AND project_id = $1`,
+          WHERE title % 'TypeError boom' AND project_id = $1`,
         [projectId],
       );
       expect(similar.rows.length).toBe(1);
+    });
+  });
+
+  it("upgrades a Block 6 database to latest preserving data and adding releases", async () => {
+    const name = await createTempDatabase();
+    const databaseUrl = tempDatabaseUrl(name);
+
+    // 1. Block 6 schema (0000 + 0001 + 0002 + 0003).
+    const block6Folder = await buildPartialMigrationsFolder(3);
+    await runMigrations(databaseUrl, block6Folder);
+
+    const projectId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const sessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const eventId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const issueId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+    // 2. Block 6 fixtures across every RS-04 migration concern: users,
+    //    workspaces, projects, keys, telemetry and issues.
+    await withPool(databaseUrl, async (pool) => {
+      await pool.query(
+        `INSERT INTO "user" ("id", "name", "email")
+         VALUES ('fixture-user-7', 'Fixture User', 'fixture7@example.com')`,
+      );
+      await pool.query(
+        `INSERT INTO workspaces ("id", "name", "slug", "created_by_user_id")
+         VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'Fixture WS', 'fixture-ws-7', 'fixture-user-7')`,
+      );
+      await pool.query(
+        `INSERT INTO projects ("id", "workspace_id", "name", "slug")
+         VALUES ($1, 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+                 'Fixture Proj', 'fixture-proj-7')`,
+        [projectId],
+      );
+      await pool.query(
+        `INSERT INTO project_keys ("project_id", "kind", "name", "prefix", "key_hash")
+         VALUES ($1, 'secret', 'ci-token', 'abcdef12',
+                 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')`,
+        [projectId],
+      );
+      await pool.query(
+        `INSERT INTO telemetry_sessions
+           ("id", "project_id", "sdk_session_id", "environment", "release", "initial_url", "sdk_version")
+         VALUES ($1, $2, 'sdk-session-7', 'production', 'web@1.4.2',
+                 'https://example.com/', 'test-sdk@0.0.0')`,
+        [sessionId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO events
+           ("id", "project_id", "telemetry_session_id", "client_event_id",
+            "sequence_number", "event_type", "occurred_at", "environment",
+            "release", "payload_json", "processing_state")
+         VALUES ($1, $2, $3, 'client-event-7', 1, 'exception', now(),
+                 'production', 'web@1.4.2',
+                 '{"values":[{"type":"TypeError","value":"boom"}]}'::jsonb,
+                 'pending')`,
+        [eventId, projectId, sessionId],
+      );
+      await pool.query(
+        `INSERT INTO event_processing_outbox ("event_id", "attempt_count")
+         VALUES ($1, 0)`,
+        [eventId],
+      );
+      await pool.query(
+        `INSERT INTO issues
+           ("id", "project_id", "fingerprint", "fingerprint_signature",
+            "type", "title", "normalized_message", "status", "severity",
+            "first_seen_at", "last_seen_at", "occurrence_count",
+            "affected_session_count")
+         VALUES ($1, $2,
+                 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                 'TypeError: boom', 'exception', 'TypeError: boom',
+                 'TypeError: boom', 'open', 'error', now(), now(), 1, 1)`,
+        [issueId, projectId],
+      );
+    });
+
+    // 3. Apply Block 7 (0004).
+    await runMigrations(databaseUrl, MIGRATIONS_DIR);
+
+    // 4. Everything survives; releases tables are usable immediately.
+    await withPool(databaseUrl, async (pool) => {
+      const project = await pool.query(
+        `SELECT name FROM projects WHERE id = $1`,
+        [projectId],
+      );
+      expect(project.rows[0]?.name).toBe("Fixture Proj");
+
+      const key = await pool.query(
+        `SELECT kind FROM project_keys WHERE project_id = $1`,
+        [projectId],
+      );
+      expect(key.rows[0]?.kind).toBe("secret");
+
+      const event = await pool.query(
+        `SELECT release, processing_state FROM events WHERE id = $1`,
+        [eventId],
+      );
+      expect(event.rows[0]?.release).toBe("web@1.4.2");
+      expect(event.rows[0]?.processing_state).toBe("pending");
+
+      const issue = await pool.query(
+        `SELECT status FROM issues WHERE id = $1`,
+        [issueId],
+      );
+      expect(issue.rows[0]?.status).toBe("open");
+
+      // New tables accept valid rows with their guards enforced.
+      const releaseId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+      await pool.query(
+        `INSERT INTO releases ("id", "project_id", "version", "commit_sha", "repository_url")
+         VALUES ($1, $2, 'web@1.4.2', 'abc1234', 'https://github.com/acme/app')`,
+        [releaseId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO release_artifacts
+           ("release_id", "artifact_path", "storage_key", "content_hash", "size_bytes", "artifact_type")
+         VALUES ($1, 'assets/app.js.map', 'key-1',
+                 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                 1024, 'source_map')`,
+        [releaseId],
+      );
+      const artifact = await pool.query(
+        `SELECT artifact_type FROM release_artifacts WHERE release_id = $1`,
+        [releaseId],
+      );
+      expect(artifact.rows[0]?.artifact_type).toBe("source_map");
+
+      // Identity uniqueness holds on the upgraded database.
+      await expect(
+        pool.query(
+          `INSERT INTO releases ("project_id", "version") VALUES ($1, 'web@1.4.2')`,
+          [projectId],
+        ),
+      ).rejects.toThrow();
+      await expect(
+        pool.query(
+          `INSERT INTO release_artifacts
+             ("release_id", "artifact_path", "storage_key", "content_hash", "size_bytes", "artifact_type")
+           VALUES ($1, 'assets/app.js.map', 'key-2',
+                   'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                   10, 'source_map')`,
+          [releaseId],
+        ),
+      ).rejects.toThrow();
+
+      // Project cascade reaches the new tables.
+      await pool.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+      const orphans = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM releases`,
+      );
+      expect(orphans.rows[0]?.count).toBe(0);
+      const orphanArtifacts = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM release_artifacts`,
+      );
+      expect(orphanArtifacts.rows[0]?.count).toBe(0);
     });
   });
 });

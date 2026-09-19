@@ -22,7 +22,6 @@ export const PUBLIC_KEY_PREFIX = "rb_pk_";
 const PREFIX_BYTES = 4;
 const SECRET_BYTES = 32;
 const FULL_KEY_RE = /^rb_pk_([0-9a-f]{8})_([A-Za-z0-9_-]{43})$/;
-
 export interface ParsedPublicKey {
   prefix: string;
   secret: string;
@@ -78,6 +77,99 @@ export function verifyPublicKey(
   let candidateHash: string;
   try {
     candidateHash = hashPublicKey(candidate);
+  } catch {
+    return false;
+  }
+  try {
+    const a = Buffer.from(candidateHash, "hex");
+    const b = Buffer.from(storedHash, "hex");
+    if (a.length !== b.length) {
+      return false;
+    }
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Secret project token format: `rb_sk_<prefix>_<secret>`.
+ *
+ * - `prefix` is 8 lowercase hex chars (4 CSPRNG bytes). It is stored in
+ *   plaintext for prefix lookup/display and is NOT secret.
+ * - `secret` is 43 base64url chars (32 CSPRNG bytes, 256-bit entropy).
+ * - The full token is returned ONE time at creation and never persisted.
+ *   Only `prefix` + `sha256(fullToken)` are stored.
+ * - Project-scoped identity only: no JWT, no encoded permissions. Every
+ *   privileged use re-checks project scope against `project_keys`.
+ *
+ * Hashing reuses the canonical public-key strategy (SHA-256 over the full
+ * credential + timingSafeEqual comparison): the secret carries 256-bit
+ * entropy, so a fast hash is sufficient and side-channel-safe.
+ */
+export const SECRET_KEY_PREFIX = "rb_sk_";
+const SECRET_FULL_TOKEN_RE = /^rb_sk_([0-9a-f]{8})_([A-Za-z0-9_-]{43})$/;
+
+export interface ParsedSecretToken {
+  prefix: string;
+  secret: string;
+  fullToken: string;
+}
+
+export class SecretTokenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SecretTokenError";
+  }
+}
+
+/** Generate a new secret project token (CSPRNG). Returns full token + prefix. */
+export function generateSecretToken(): {
+  fullToken: string;
+  prefix: string;
+} {
+  const prefix = randomBytes(PREFIX_BYTES).toString("hex");
+  const secret = randomBytes(SECRET_BYTES).toString("base64url");
+  const fullToken = `${SECRET_KEY_PREFIX}${prefix}_${secret}`;
+  return { fullToken, prefix };
+}
+
+/** Parse `rb_sk_<prefix>_<secret>`. Throws SecretTokenError on mismatch. */
+export function parseSecretToken(input: unknown): ParsedSecretToken {
+  if (typeof input !== "string") {
+    throw new SecretTokenError("Token must be a string");
+  }
+  const match = SECRET_FULL_TOKEN_RE.exec(input.trim());
+  if (match === null) {
+    throw new SecretTokenError("Invalid secret token format");
+  }
+  const prefix = match[1];
+  const secret = match[2];
+  if (prefix === undefined || secret === undefined) {
+    throw new SecretTokenError("Invalid secret token format");
+  }
+  return { prefix, secret, fullToken: input.trim() };
+}
+
+/** sha256 hex of the full token. Stored at rest; never store plaintext. */
+export function hashSecretToken(fullToken: string): string {
+  const parsed = parseSecretToken(fullToken);
+  return createHash("sha256").update(parsed.fullToken, "utf8").digest("hex");
+}
+
+/**
+ * Timing-safe verification of a candidate full token against a stored hash.
+ * Returns false for malformed candidates instead of throwing (auth-safe).
+ * Public ingest keys (`rb_pk_…`) never verify: the prefix format check
+ * rejects them before any comparison runs.
+ */
+export function verifySecretToken(
+  candidate: string,
+  storedHash: string,
+): boolean {
+  let candidateHash: string;
+  try {
+    candidateHash = hashSecretToken(candidate);
   } catch {
     return false;
   }

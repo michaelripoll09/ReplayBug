@@ -135,6 +135,9 @@ export type {
 export {
   occurrenceSchema,
   occurrenceListQuerySchema,
+  eventSymbolicationStatusSchema,
+  eventSymbolicationSchema,
+  eventDiagnosticSchema,
   exceptionEventDetailSchema,
   rejectionEventDetailSchema,
   consoleEventDetailSchema,
@@ -152,6 +155,11 @@ export type {
   OccurrenceListQuery,
   SafeFrame,
   EventDetail,
+  EventSymbolication,
+  EventSymbolicationStatus,
+  EventDiagnostic,
+  DiagnosticRawFrame,
+  DiagnosticMappedFrame,
 } from "./events.js";
 export { notificationTypeSchema, notificationSchema } from "./notifications.js";
 export { notificationListQuerySchema } from "./notifications.js";

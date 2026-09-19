@@ -15,7 +15,6 @@ describe("capability policy", () => {
     expect(hasCapability("admin", "project:create")).toBe(true);
     expect(hasCapability("admin", "key:rotate")).toBe(true);
   });
-
   it("member/viewer are read-only for writes", () => {
     for (const role of ["member", "viewer"] as const) {
       expect(hasCapability(role, "project:read")).toBe(true);
@@ -27,6 +26,17 @@ describe("capability policy", () => {
       expect(hasCapability(role, "origin:write")).toBe(false);
       expect(hasCapability(role, "key:rotate")).toBe(false);
     }
+  });
+
+  it("restricts secret-token management to owner/admin", () => {
+    expect(hasCapability("owner", "project:manage-secret-tokens")).toBe(true);
+    expect(hasCapability("admin", "project:manage-secret-tokens")).toBe(true);
+    expect(hasCapability("member", "project:manage-secret-tokens")).toBe(false);
+    expect(hasCapability("viewer", "project:manage-secret-tokens")).toBe(false);
+    expect(RBAC_MATRIX.owner["project:manage-secret-tokens"]).toBe(true);
+    expect(RBAC_MATRIX.admin["project:manage-secret-tokens"]).toBe(true);
+    expect(RBAC_MATRIX.member["project:manage-secret-tokens"]).toBe(false);
+    expect(RBAC_MATRIX.viewer["project:manage-secret-tokens"]).toBe(false);
   });
 
   it("matches the documented RBAC matrix", () => {

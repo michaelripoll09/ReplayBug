@@ -21,6 +21,7 @@ export {
   hashFingerprint,
   normalizeCustomFingerprint,
   deriveEventProcessingPlan,
+  selectExceptionFingerprintFrames,
   type IssueType,
   type IssueSeverity,
   type IssueDescriptor,

@@ -274,6 +274,99 @@ export const auditLogs = pgTable(
 );
 
 /**
+ * RS-04 releases: one addressable source-map upload target per
+ * (project, version). `version` is intentionally NOT semver-restricted
+ * (`web@1.4.2`, `demo@2026.09.18`, `1.4.2` are all valid): 1..128 chars
+ * with no control characters. `commit_sha` is an optional hex git SHA
+ * (7..64 chars); `repository_url` is an optional http/https shape that is
+ * never fetched (no SSRF surface). Identity metadata is immutable: the
+ * repository returns the existing row on identical re-create and raises a
+ * version conflict on any metadata difference.
+ */
+export const releases = pgTable(
+  "releases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    version: text("version").notNull(),
+    commitSha: text("commit_sha"),
+    repositoryUrl: text("repository_url"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("releases_project_version_unique").on(t.projectId, t.version),
+    index("releases_project_created_idx").on(t.projectId, t.createdAt),
+    check(
+      "releases_version_check",
+      sql`char_length(${t.version}) BETWEEN 1 AND 128 AND ${t.version} !~ '[[:cntrl:]]'`,
+    ),
+    check(
+      "releases_commit_sha_check",
+      sql`${t.commitSha} IS NULL OR ${t.commitSha} ~ '^[0-9a-fA-F]{7,64}$'`,
+    ),
+    check(
+      "releases_repository_url_check",
+      sql`${t.repositoryUrl} IS NULL OR (char_length(${t.repositoryUrl}) <= 2048 AND ${t.repositoryUrl} ~ '^https?://[^[:space:][:cntrl:]]+$')`,
+    ),
+  ],
+);
+
+/**
+ * RS-04 release artifacts: uploaded source maps and their minified assets.
+ * `artifact_path` is a canonical POSIX relative path — RS-04 guards NOT
+ * NULL + length here; full traversal rejection belongs to RS-06.
+ * `storage_key` is server-generated (never client-supplied). The unique
+ * guard on (release_id, artifact_path) backs RS-06 upsert/conflict logic;
+ * RS-04 provides the constraint plus these repository primitives only.
+ */
+export const releaseArtifacts = pgTable(
+  "release_artifacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    releaseId: uuid("release_id")
+      .notNull()
+      .references(() => releases.id, { onDelete: "cascade" }),
+    artifactPath: text("artifact_path").notNull(),
+    storageKey: text("storage_key").notNull(),
+    contentHash: text("content_hash").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    artifactType: text("artifact_type").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("release_artifacts_release_path_unique").on(
+      t.releaseId,
+      t.artifactPath,
+    ),
+    index("release_artifacts_release_idx").on(t.releaseId),
+    index("release_artifacts_release_hash_idx").on(t.releaseId, t.contentHash),
+    check(
+      "release_artifacts_path_check",
+      sql`char_length(${t.artifactPath}) BETWEEN 1 AND 1024`,
+    ),
+    check(
+      "release_artifacts_storage_key_check",
+      sql`char_length(${t.storageKey}) BETWEEN 1 AND 1024`,
+    ),
+    check(
+      "release_artifacts_content_hash_check",
+      sql`${t.contentHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check("release_artifacts_size_check", sql`${t.sizeBytes} >= 0`),
+    check(
+      "release_artifacts_type_check",
+      sql`${t.artifactType} IN ('source_map','minified_asset')`,
+    ),
+  ],
+);
+
+/**
  * Telemetry session — unrelated to auth session.
  * Tracks a browser SDK session for a project.
  */
@@ -616,6 +709,15 @@ export const events = pgTable(
     issueId: uuid("issue_id").references(() => issues.id, {
       onDelete: "set null",
     }),
+    /**
+     * RS-08 worker symbolication enrichment (JSONB, nullable). Written once
+     * by the worker outside the issue transaction and never by ingest:
+     * `{ status, rawFrames, mappedFrames, mappedFrameCount }`. The ingested
+     * `payload_json` stays immutable — raw frames are echoed inside the
+     * enrichment, never overwritten. Null means "not symbolicated yet"
+     * (pre-RS-08 rows, non-issue fast paths that predate enrichment).
+     */
+    symbolicationJson: jsonb("symbolication_json"),
     processingState: processingStateEnum("processing_state")
       .notNull()
       .default("pending"),
@@ -715,6 +817,8 @@ export const schema = {
   projectOrigins,
   projectKeys,
   auditLogs,
+  releases,
+  releaseArtifacts,
   telemetrySessions,
   issues,
   issueActivity,

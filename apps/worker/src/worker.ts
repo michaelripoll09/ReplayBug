@@ -1,6 +1,11 @@
 import { PgBoss } from "pg-boss";
 import type { Logger } from "@replaybug/observability";
 import type { DbClient } from "@replaybug/db";
+import {
+  ArtifactConfigError,
+  LocalArtifactStorage,
+  type ArtifactStorage,
+} from "@replaybug/artifacts";
 import type { WorkerConfig } from "./config.js";
 import {
   PROCESS_EVENT_QUEUE,
@@ -53,6 +58,29 @@ export interface RunningWorker {
 
 const SHUTDOWN_TIMEOUT_MS = 15_000;
 
+/**
+ * Resolve the shared artifact store (same `REPLAYBUG_ARTIFACT_DIR` contract
+ * as the API). A misconfigured root must never take ingestion down: log
+ * and run without storage so symbolication degrades to raw
+ * (`storage_unavailable`) while events/issues/SSE keep working.
+ */
+function resolveArtifactStorage(
+  logger: Logger,
+): Pick<ArtifactStorage, "get"> | undefined {
+  try {
+    return LocalArtifactStorage.fromEnv();
+  } catch (error) {
+    if (error instanceof ArtifactConfigError) {
+      logger.warn(
+        { err: error },
+        "Artifact storage misconfigured; symbolication degrades to raw",
+      );
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 export async function startWorkerRuntime(
   deps: WorkerRuntimeDeps,
 ): Promise<RunningWorker> {
@@ -72,7 +100,12 @@ export async function startWorkerRuntime(
   await boss.createQueue(PROCESS_EVENT_QUEUE, processEventQueueOptions(config));
 
   const publisher = createPgBossPublisher(boss);
-  const handler = createProcessEventJobHandler({ db: client.db, logger });
+  const storage = resolveArtifactStorage(logger);
+  const handler = createProcessEventJobHandler({
+    db: client.db,
+    logger,
+    storage,
+  });
   await boss.work(
     PROCESS_EVENT_QUEUE,
     {

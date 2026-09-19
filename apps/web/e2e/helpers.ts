@@ -16,6 +16,7 @@ export async function resetE2EDatabase(): Promise<void> {
         "issue_comments", "issue_tag_assignments", "issue_tags",
         "issue_activity", "issue_affected_sessions", "issues",
         "notifications",
+        "release_artifacts", "releases",
         "workspace_memberships", "workspaces"
       RESTART IDENTITY CASCADE
     `);

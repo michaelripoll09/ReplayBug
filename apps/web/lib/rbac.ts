@@ -40,6 +40,17 @@ export function canRotateKeys(role: WorkspaceRole): boolean {
 }
 
 /**
+ * RS-10 secret project tokens (CLI/CI-only). Mirrors the backend
+ * `project:manage-secret-tokens` capability (owner/admin): member and viewer
+ * get 403 on every secret-token operation, including list. The settings UI
+ * only hides creation/revocation controls that would deterministically 403
+ * and renders the 403 list state gracefully.
+ */
+export function canManageSecretTokens(role: WorkspaceRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/**
  * Block 6 issue affordances. Member and up manage issues; viewers read.
  * Mirrors the API `issue:*` capabilities — the backend enforces, the UI
  * only hides controls that would deterministically 403.

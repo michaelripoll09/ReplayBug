@@ -35,7 +35,12 @@ export function apiServer(): WebServerEntries {
     {
       command: "pnpm --filter @replaybug/api start",
       port: 4001,
-      reuseExistingServer: process.env["CI"] === undefined,
+      // Never reuse a developer `pnpm dev` server (see
+      // apps/web/playwright.config.ts): a stale dev API runs with
+      // NODE_ENV=development, so sign-up rate limiting stays ON and E2E
+      // register flows flake with 429s. Always spawn the fresh
+      // NODE_ENV=test server and fail fast on an occupied port.
+      reuseExistingServer: false,
       timeout: 60_000,
       env: {
         NODE_ENV: "test",

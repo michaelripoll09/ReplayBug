@@ -12,6 +12,8 @@ import type { WorkspaceRole } from "@replaybug/contracts";
  *   workspace deletion which is not exposed this block)
  * - member: read + inspect telemetry (read projects/envs/origins/keys meta);
  *   cannot create/update/delete projects, envs, origins or rotate keys.
+ *   Secret tokens (`project:manage-secret-tokens`) are owner/admin only:
+ *   member and viewer cannot list, create or revoke them.
  *   Block 6: member additionally manages issues (status, assignment, tags,
  *   comments) and reads sessions + own notifications.
  * - viewer: read-only (same read set as member this block). Block 6: issue,
@@ -35,6 +37,7 @@ export type Capability =
   | "origin:write"
   | "key:read"
   | "key:rotate"
+  | "project:manage-secret-tokens"
   | "issue:read"
   | "issue:update-status"
   | "issue:assign"
@@ -63,6 +66,7 @@ const CAPABILITY_MIN_ROLE: Record<Capability, WorkspaceRole> = {
   "origin:write": "admin",
   "key:read": "viewer",
   "key:rotate": "admin",
+  "project:manage-secret-tokens": "admin",
   "issue:read": "viewer",
   "issue:update-status": "member",
   "issue:assign": "member",
@@ -97,6 +101,10 @@ export function canManageOrigins(role: WorkspaceRole): boolean {
 
 export function canRotateKeys(role: WorkspaceRole): boolean {
   return hasCapability(role, "key:rotate");
+}
+
+export function canManageSecretTokens(role: WorkspaceRole): boolean {
+  return hasCapability(role, "project:manage-secret-tokens");
 }
 
 export function canReadIssues(role: WorkspaceRole): boolean {
@@ -142,6 +150,7 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "origin:write": true,
     "key:read": true,
     "key:rotate": true,
+    "project:manage-secret-tokens": true,
     "issue:read": true,
     "issue:update-status": true,
     "issue:assign": true,
@@ -163,6 +172,7 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "origin:write": true,
     "key:read": true,
     "key:rotate": true,
+    "project:manage-secret-tokens": true,
     "issue:read": true,
     "issue:update-status": true,
     "issue:assign": true,
@@ -184,6 +194,7 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "origin:write": false,
     "key:read": true,
     "key:rotate": false,
+    "project:manage-secret-tokens": false,
     "issue:read": true,
     "issue:update-status": true,
     "issue:assign": true,
@@ -205,6 +216,7 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "origin:write": false,
     "key:read": true,
     "key:rotate": false,
+    "project:manage-secret-tokens": false,
     "issue:read": true,
     "issue:update-status": false,
     "issue:assign": false,

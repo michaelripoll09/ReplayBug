@@ -45,6 +45,11 @@ async function main(): Promise<void> {
       ingestRateLimitRequestsPerMinute: 60,
       ingestRateLimitEventsPerMinute: 1000,
       userHmacSecret: "test-hmac-secret-0123456789abcdef0123456789",
+      // RS-06 upload policy (server authoritative; mirrors the zod
+      // defaults in apps/api/src/config.ts, which stay canonical).
+      artifactMaxFileBytes: 25 * 1024 * 1024,
+      artifactPreflightMaxEntries: 500,
+      artifactAggregateMaxBytes: 250 * 1024 * 1024,
     },
     checkDatabase: async () => true,
   });

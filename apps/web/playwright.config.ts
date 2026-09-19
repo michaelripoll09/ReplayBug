@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -5,6 +7,9 @@ import { defineConfig, devices } from "@playwright/test";
  * - Isolated test DB via global setup truncation (same PG, clean tables).
  * - Reproducible: no personal data, synthetic example.com users only.
  * - Requires built API + Web (`pnpm build` first); webServer starts both.
+ * - Artifact blobs live under a temp-dir root shared by the API and any
+ *   worker the specs spawn (RS-12 full source-map flow), so E2E never
+ *   touches the developer default (`~/.replaybug/artifacts`).
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -29,7 +34,13 @@ export default defineConfig({
     {
       command: "pnpm --filter @replaybug/api start",
       port: 4001,
-      reuseExistingServer: true,
+      // Never reuse a developer `pnpm dev` server: a stale dev API runs
+      // with NODE_ENV=development (Better Auth sign-up rate limiting ON)
+      // and a divergent artifact root, which silently poisons E2E with
+      // register 429 stalls and worker storage_unavailable mismatches.
+      // Playwright always spawns a fresh NODE_ENV=test server instead and
+      // fails fast when the port is occupied.
+      reuseExistingServer: false,
       timeout: 60_000,
       env: {
         NODE_ENV: "test",
@@ -42,13 +53,20 @@ export default defineConfig({
         REPLAYBUG_TRUSTED_ORIGINS: "http://localhost:3000",
         REPLAYBUG_USER_HMAC_SECRET:
           "test-hmac-secret-0123456789abcdef0123456789",
+        // RS-12 temp-dir artifact root (specs compute the same default, so
+        // a spawned worker shares it with this API server).
+        REPLAYBUG_ARTIFACT_DIR:
+          process.env["REPLAYBUG_ARTIFACT_DIR"] ??
+          join(tmpdir(), "replaybug-web-e2e-artifacts"),
         LOG_LEVEL: "silent",
       },
     },
     {
       command: "pnpm --filter @replaybug/web start",
       port: 3000,
-      reuseExistingServer: true,
+      // Same hermetic rule as the API entry above: never attach to a
+      // developer `next dev` instance serving stale build output.
+      reuseExistingServer: false,
       timeout: 60_000,
       env: {
         NEXT_PUBLIC_REPLAYBUG_API_URL: "http://localhost:4001",

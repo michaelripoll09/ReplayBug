@@ -91,7 +91,7 @@ export default function SettingsLayout({
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="environments">Environments</TabsTrigger>
             <TabsTrigger value="origins">Origins</TabsTrigger>
-            <TabsTrigger value="keys">Public Key</TabsTrigger>
+            <TabsTrigger value="keys">Keys &amp; Tokens</TabsTrigger>
           </TabsList>
         </Tabs>
         <div data-testid={`settings-${active}`}>

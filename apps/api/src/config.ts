@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  DEFAULT_ARTIFACT_MAX_FILE_BYTES,
+  PREFLIGHT_MAX_ENTRIES,
+  UPLOAD_AGGREGATE_MAX_BYTES,
+  isSafeArtifactRoot,
+} from "@replaybug/artifacts";
 
 /**
  * Validated API runtime configuration. No scattered `process.env` access is
@@ -51,6 +57,44 @@ export const apiConfigSchema = z.object({
   userHmacSecret: z
     .string()
     .min(32, "REPLAYBUG_USER_HMAC_SECRET must be at least 32 characters"),
+  // RS-06 artifact upload policy (server authoritative). The per-file cap
+  // is enforced by HTTP/multipart limits BEFORE unbounded buffering; the
+  // manifest/aggregate caps bound preflight. Staging defaults to the OS
+  // temp dir; the storage root defaults to REPLAYBUG_ARTIFACT_DIR /
+  // ~/.replaybug/artifacts via @replaybug/artifacts.
+  //
+  // RS-13: an explicit REPLAYBUG_ARTIFACT_DIR is validated here (fail-fast
+  // with a readable message) instead of failing later at first upload, so
+  // production misconfiguration surfaces at startup. Unset stays valid —
+  // the shared @replaybug/artifacts contract supplies the validated
+  // OS-local default. The worker shares that same contract via
+  // LocalArtifactStorage.fromEnv() but degrades to raw symbolication
+  // instead of failing startup (ingest must survive storage outages).
+  artifactDir: z
+    .string()
+    .refine((value) => isSafeArtifactRoot(value), {
+      message:
+        "REPLAYBUG_ARTIFACT_DIR must be an absolute directory outside repo source trees (or unset for the OS-local default)",
+    })
+    .optional(),
+  artifactMaxFileBytes: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(1024 * 1024 * 1024)
+    .default(DEFAULT_ARTIFACT_MAX_FILE_BYTES),
+  artifactPreflightMaxEntries: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(5000)
+    .default(PREFLIGHT_MAX_ENTRIES),
+  artifactAggregateMaxBytes: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(UPLOAD_AGGREGATE_MAX_BYTES),
+  artifactStagingDir: z.string().optional(),
 });
 
 export type ApiConfig = z.infer<typeof apiConfigSchema>;
@@ -95,6 +139,9 @@ export function loadApiConfigFromEnv(
     ingestRateLimitEventsPerMinute:
       env["REPLAYBUG_INGEST_RATE_LIMIT_EVENTS_PER_MINUTE"],
     userHmacSecret: env["REPLAYBUG_USER_HMAC_SECRET"],
+    artifactDir: env["REPLAYBUG_ARTIFACT_DIR"],
+    artifactMaxFileBytes: env["REPLAYBUG_ARTIFACT_MAX_FILE_BYTES"],
+    artifactStagingDir: env["REPLAYBUG_ARTIFACT_STAGING_DIR"],
   });
   if (!parsed.success) {
     const details = parsed.error.issues

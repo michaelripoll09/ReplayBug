@@ -4,8 +4,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
-    // Integration suites share one PostgreSQL database and truncate their
-    // fixtures per test, so files must not run concurrently.
+    // Each package test run owns an isolated PostgreSQL database; files still
+    // serialize because their fixtures truncate that package-owned database.
     fileParallelism: false,
   },
 });

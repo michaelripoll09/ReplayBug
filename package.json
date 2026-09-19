@@ -23,7 +23,8 @@
     "worker:latency": "tsx scripts/worker-latency-smoke.ts",
     "verify:generated-test": "tsx scripts/verify-generated-test.ts",
     "test:sdk": "pnpm --filter @replaybug/sdk test",
-    "test:e2e": "pnpm --filter @replaybug/web test:e2e && pnpm --filter @replaybug/demo test:e2e"
+    "test:e2e": "pnpm --filter @replaybug/web test:e2e && pnpm --filter @replaybug/demo test:e2e",
+    "test:isolation": "tsx scripts/test-parallel-integration-isolation.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

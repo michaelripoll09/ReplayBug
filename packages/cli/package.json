@@ -24,7 +24,7 @@
     "build": "tsup src/bin.ts src/index.ts --format esm --dts --sourcemap --clean --out-dir dist",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "tsx ../../scripts/run-isolated-vitest.ts cli"
   },
   "dependencies": {
     "@replaybug/artifacts": "workspace:*",

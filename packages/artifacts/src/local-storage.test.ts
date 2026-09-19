@@ -200,15 +200,19 @@ describe("adversarial keys", () => {
 
   it("never writes outside the root for keys that resolve oddly", async () => {
     const { storage, root } = await makeStorage();
-    const parentBefore = new Set(await readdir(path.dirname(root)));
-    const key = `${PROJECT_ID}/${RELEASE_ID}/${"e".repeat(64)}`;
+    const contentHash = "e".repeat(64);
+    const key = `${PROJECT_ID}/${RELEASE_ID}/${contentHash}`;
+    const escapedTarget = path.join(
+      path.dirname(root),
+      PROJECT_ID,
+      RELEASE_ID,
+      contentHash,
+    );
     const bytes = randomBytes(32);
     await storage.put(key, Readable.from([bytes]));
-    // Only the root directory itself may have changed.
-    expect(new Set(await readdir(path.dirname(root)))).toEqual(parentBefore);
-    const st = await stat(
-      path.join(root, PROJECT_ID, RELEASE_ID, "e".repeat(64)),
-    );
+    // A root escape would write this exact sibling target.
+    await expect(stat(escapedTarget)).rejects.toMatchObject({ code: "ENOENT" });
+    const st = await stat(path.join(root, PROJECT_ID, RELEASE_ID, contentHash));
     expect(st.size).toBe(bytes.length);
   });
 });

@@ -49,6 +49,25 @@ function invalidateForUpdate(
       invalidate(queryKeys.issues(projectId));
       invalidate(queryKeys.tags(projectId));
       break;
+    case "reproduction.ready": {
+      // A generation finished: refresh the issue history list, the one
+      // reproduction record and the activity row — nothing else.
+      invalidate(["issues", update.issueId, "reproductions"]);
+      if (update.reproductionId !== undefined) {
+        invalidate(queryKeys.reproduction(update.reproductionId));
+      }
+      invalidate([...issueKey, "activity"]);
+      break;
+    }
+    case "reproduction.failed": {
+      // Failure detail + notification badge only; the history list is
+      // unchanged in shape (the pending row already exists).
+      if (update.reproductionId !== undefined) {
+        invalidate(queryKeys.reproduction(update.reproductionId));
+      }
+      invalidate(["notifications"]);
+      break;
+    }
   }
 }
 

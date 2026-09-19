@@ -18,10 +18,17 @@ export interface ProjectUpdate {
     | "issue.regressed"
     | "comment.created"
     | "assignment.changed"
-    | "tags.changed";
+    | "tags.changed"
+    | "reproduction.ready"
+    | "reproduction.failed";
   projectId: string;
   issueId: string;
   eventId?: string;
+  /**
+   * Reproduction this update refers to. Only present on
+   * reproduction.ready / reproduction.failed — ids only, never code.
+   */
+  reproductionId?: string;
 }
 
 export interface EventSourceLike {
@@ -58,6 +65,8 @@ const KNOWN_TYPES: ReadonlySet<ProjectUpdate["type"]> = new Set([
   "comment.created",
   "assignment.changed",
   "tags.changed",
+  "reproduction.ready",
+  "reproduction.failed",
 ]);
 
 const UUID_RE =
@@ -139,12 +148,20 @@ export function parseProjectUpdate(
   ) {
     return null;
   }
+  const reproductionId = record["reproductionId"];
+  if (
+    reproductionId !== undefined &&
+    (typeof reproductionId !== "string" || !UUID_RE.test(reproductionId))
+  ) {
+    return null;
+  }
   return {
     version: 1,
     type: type as ProjectUpdate["type"],
     projectId,
     issueId,
     ...(eventId !== undefined ? { eventId } : {}),
+    ...(reproductionId !== undefined ? { reproductionId } : {}),
   };
 }
 

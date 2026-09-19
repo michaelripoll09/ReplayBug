@@ -4,14 +4,15 @@ Developer observability for reproducible bugs: privacy-safe browser failure
 context, grouped issues, session timelines, and Playwright reproduction
 tests — on a self-hostable stack with no paid services.
 
-> **Status: Block 7 releases + source maps.** Everything from Block 6
+> **Status: Block 8 Playwright reproductions.** Everything from Block 7
 > (auth, tenancy, onboarding, dashboard shell, issue workflow API +
-> dashboard, SSE realtime) still holds — **and** releases are now
-> CLI-managed: secret project tokens, `releases create/list`, source-map
-> upload to local artifact storage, worker symbolication before
-> fingerprinting, source-mapped stacks with raw fallback in the dashboard,
-> and source-mapped grouping (same original source groups into one issue
-> across releases). Playwright reproduction generation, retention cleanup
+> dashboard, SSE realtime, CLI-managed releases, source-map upload to
+> local artifact storage, worker symbolication, source-mapped grouping)
+> still holds — **and** occurrences now generate portable Playwright
+> reproduction tests: pure two-stage generator (plan IR → rendered spec,
+> `REPRODUCTION_GENERATOR_VERSION 1.0.0`), async pg-boss queue with
+> transactional outbox, idempotent request API, and a dashboard panel
+> (generate/copy/download/regenerate/history). Retention cleanup
 > and Ollama analysis are explicitly not built yet.
 
 ## What exists today
@@ -96,6 +97,23 @@ tests — on a self-hostable stack with no paid services.
 - Release/token dashboard: release list/detail (counts, artifact metadata,
   never `storage_key`), secret-token settings with one-time modal, issue
   stacks defaulting to mapped with a Source mapped/Raw toggle
+- Occurrence → Playwright reproduction (Block 8): pure generator in
+  `packages/reproducer` (plan IR over the last 50 session events,
+  semantic navigation/click/input extraction, test_id > role_name >
+  label > id > name > css_fallback locator ranking with brittle warnings,
+  same-origin route sanitization, sensitive values replaced with
+  `REPLACE_WITH_TEST_VALUE` placeholders, `pageerror`/`network`/
+  `console_error` failure assertions with bounded `expect.poll`),
+  `reproduction_tests` + `reproduction_generation_outbox` tables
+  (drizzle `0006`), `POST /api/v1/events/:eventId/reproductions`
+  (Idempotency-Key, pre-validates evidence, 202 new / 200 deduped) +
+  per-issue history list (no code) + detail + download endpoints, worker
+  `replaybug.generate-reproduction` queue with dispatcher and deterministic
+  ready/failed completion, dashboard panel (generate/copy/download/
+  regenerate/history, viewer read-only), and a verified demo-generated
+  test (`demo-uncaught-error` pageerror scenario passes locally via
+  `scripts/verify-generated-test.ts`, loopback-only). See
+  `docs/architecture/reproduction-generator.md`
 - Real Drizzle versioned migrations (`packages/db/drizzle`) and dev-only seed
   (`pnpm db:seed`: demo user/workspace/project/prod env/dev env/localhost origin;
   creates no tokens, releases, or artifact records)
@@ -107,9 +125,11 @@ tests — on a self-hostable stack with no paid services.
 
 ## What is explicitly not built yet
 
-Playwright reproduction generator, retention cleanup (artifact blobs only
+Retention cleanup (artifact blobs only
 accumulate — plan volume growth), invitation cleanup,
-Ollama analysis, GitHub OAuth and public demo mode.
+Ollama analysis, GitHub OAuth and public demo mode. No AI analysis of
+failures, no hosted execution service — generated tests run locally by
+the developer.
 No fake metrics, charts or screenshots.
 See `` for the full
 plan and `docs/architecture/worker.md` for what the worker does today.
@@ -224,7 +244,8 @@ replaybug/
 │  ├─ cli/            # replaybug CLI (projects/releases/sourcemaps, secret-token auth)
 │  ├─ artifacts/      # ArtifactStorage seam + local backend + path/key policy
 │  ├─ db/             # pg + Drizzle schema/migrations/repos/fingerprinting
-│  ├─ contracts/      # Zod telemetry protocol + tenancy DTOs
+│  ├─ reproducer/     # pure occurrence→Playwright generator (no I/O)
+│  ├─ contracts/      # Zod telemetry protocol + tenancy DTOs + reproductions
 │  ├─ api-client/     # Generated OpenAPI client (openapi-fetch + types)
 │  ├─ ui/             # cn + Button (shadcn-compatible base)
 │  ├─ observability/  # Pino logger factory
@@ -232,6 +253,7 @@ replaybug/
 ├─ docs/
 │  ├─ architecture.md            # architecture index
 │  ├─ architecture/source-maps.md
+│  ├─ architecture/reproduction-generator.md
 │  ├─ architecture/tenancy.md
 │  ├─ architecture/frontend.md
 │  ├─ architecture/worker.md
@@ -240,7 +262,7 @@ replaybug/
 │  ├─ self-hosting.md            # artifact storage operations
 │  ├─ specs/replaybug-master-spec.md
 │  └─ adr/
-├─ scripts/           # seed-dev, worker-latency-smoke
+├─ scripts/           # seed-dev, worker-latency-smoke, verify-generated-test
 ├─ docker/
 ├─ .github/workflows/
 ├─ docker-compose.yml

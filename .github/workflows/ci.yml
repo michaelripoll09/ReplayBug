@@ -187,8 +187,42 @@ jobs:
       # browser error → worker symbolication → mapped issue, cross-release
       # grouping, missing-map and revoked-token degradation). Demo E2E
       # covers Blocks 3-5 ingest/privacy/worker flows (kept green).
+      # Block 8 reproduction specs run inside both suites (web
+      # e2e/reproduction.spec.ts, demo e2e/reproduction-assertions.spec.ts).
       - run: pnpm --filter @replaybug/web test:e2e
       - run: pnpm --filter @replaybug/demo test:e2e
+      # Block 8 generated-test verifier: builds a deterministic fixture
+      # spec with the real generator, syntax-checks it, and executes it
+      # against a loopback-only local demo (never a remote target). The
+      # fixture replays the demo's uncaught-error scenario, so a passing
+      # run proves the expected failure was observed.
+      - name: generated-test verifier (local demo only)
+        run: |
+          node -e "
+          import('./packages/reproducer/dist/index.js').then(async (gen) => {
+            const fs = await import('node:fs');
+            const plan = gen.buildReproductionPlan({
+              issueId: '11111111-2222-4333-8444-555555555555',
+              issueTitle: 'CI verifier fixture',
+              issueType: 'exception',
+              occurrenceEventId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+              environment: 'ci',
+              baseUrl: 'http://localhost:5173',
+              timeline: [
+                { sequenceNumber: 1, occurredAt: '2026-09-01T00:00:00Z', id: 'a', eventType: 'navigation', payload: { to_url: 'http://localhost:5173/' } },
+                { sequenceNumber: 2, occurredAt: '2026-09-01T00:00:01Z', id: 'b', eventType: 'click', payload: { locator_candidates: [{ type: 'test_id', value: 'demo-uncaught-error', confidence: 1 }], element_tag: 'button' } },
+              ],
+              failure: { kind: 'exception', expectedType: 'Error', expectedMessage: 'DEMO: Uncaught error after navigation and click' },
+            });
+            const rendered = gen.renderPlaywrightTest(plan);
+            fs.writeFileSync('${{ runner.temp }}/verifier-fixture.spec.ts', rendered.code);
+            console.log('fixture bytes: ' + Buffer.byteLength(rendered.code));
+          });
+          "
+          (pnpm --filter @replaybug/demo exec vite --port 5173 --strictPort &> ${{ runner.temp }}/verifier-demo.log & echo $! > ${{ runner.temp }}/verifier-demo.pid)
+          for i in $(seq 1 60); do curl -sf http://localhost:5173/ > /dev/null && break; sleep 2; done
+          pnpm verify:generated-test -- --code-file ${{ runner.temp }}/verifier-fixture.spec.ts --target http://localhost:5173
+          kill $(cat ${{ runner.temp }}/verifier-demo.pid)
 
   sdk-size:
     name: sdk-size

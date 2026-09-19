@@ -17,6 +17,8 @@ export type DomainErrorCode =
   | "INVALID_SOURCE_MAP"
   | "ARTIFACT_TOO_LARGE"
   | "ARTIFACT_STORAGE_UNAVAILABLE"
+  | "REPRODUCTION_BASE_URL_REQUIRED"
+  | "REPRODUCTION_UNSUPPORTED_FAILURE"
   | "INTERNAL_ERROR";
 
 export class DomainError extends Error {
@@ -112,6 +114,18 @@ export function artifactStorageUnavailable(
   return new DomainError("ARTIFACT_STORAGE_UNAVAILABLE", message);
 }
 
+export function reproductionBaseUrlRequired(
+  message = "Configure the base URL for this environment before generating a test",
+): DomainError {
+  return new DomainError("REPRODUCTION_BASE_URL_REQUIRED", message);
+}
+
+export function reproductionUnsupportedFailure(
+  message = "This failure type cannot be reproduced deterministically",
+): DomainError {
+  return new DomainError("REPRODUCTION_UNSUPPORTED_FAILURE", message);
+}
+
 /** Map a domain code to HTTP status. */
 export function statusForCode(code: DomainErrorCode): number {
   switch (code) {
@@ -137,6 +151,9 @@ export function statusForCode(code: DomainErrorCode): number {
       return 413;
     case "ARTIFACT_STORAGE_UNAVAILABLE":
       return 503;
+    case "REPRODUCTION_BASE_URL_REQUIRED":
+    case "REPRODUCTION_UNSUPPORTED_FAILURE":
+      return 422;
     case "INTERNAL_ERROR":
       return 500;
   }

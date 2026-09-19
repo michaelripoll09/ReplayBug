@@ -41,6 +41,7 @@ import {
 } from "@/components/issues/issue-controls";
 import { CommentsSection } from "@/components/issues/comments";
 import { ActivityTimeline } from "@/components/issues/activity-timeline";
+import { ReproductionPanel } from "@/components/issues/reproduction-panel";
 import { SessionTimeline } from "@/components/sessions/session-timeline";
 import { formatDateTime } from "@/lib/format";
 
@@ -126,8 +127,8 @@ function EventEvidence({ eventId }: { eventId: string }) {
  * (?event=, shareable), embedded session context and discussion. Stack
  * evidence defaults to the source-mapped view when the worker symbolicated
  * the event, with an explicit Source mapped/Raw toggle and honest
- * unavailable states otherwise. No reproduction or AI UI exists in this
- * build — none is shown.
+ * unavailable states otherwise. The Playwright reproduction panel below
+ * generates from the selected occurrence and keeps per-generation history.
  */
 export default function IssueDetailPage({
   params,
@@ -426,10 +427,18 @@ export default function IssueDetailPage({
             </h2>
             <ActivityTimeline
               issueId={issueId}
+              projectId={projectId}
               members={memberOptions.map((m) => ({ id: m.id, name: m.name }))}
             />
           </section>
         </div>
+
+        <ReproductionPanel
+          projectId={projectId}
+          issueId={issueId}
+          eventId={selectedEventId ?? null}
+          userRole={role}
+        />
       </div>
     </AppShell>
   );

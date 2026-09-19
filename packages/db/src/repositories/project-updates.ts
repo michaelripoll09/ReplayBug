@@ -15,7 +15,9 @@ export type ProjectUpdateType =
   | "issue.regressed"
   | "comment.created"
   | "assignment.changed"
-  | "tags.changed";
+  | "tags.changed"
+  | "reproduction.ready"
+  | "reproduction.failed";
 
 export interface ProjectUpdateNotification {
   version: typeof PROJECT_UPDATE_VERSION;
@@ -28,6 +30,12 @@ export interface ProjectUpdateNotification {
    * tags, comments) carry no event and omit it.
    */
   eventId?: string;
+  /**
+   * Reproduction this update refers to. Only present on
+   * reproduction.ready / reproduction.failed. Kept tiny: pg_notify
+   * carries ids only, never code or secrets.
+   */
+  reproductionId?: string;
 }
 
 /**

@@ -7,6 +7,7 @@ export interface ValidatedProjectUpdate {
   projectId: string;
   issueId: string;
   eventId?: string;
+  reproductionId?: string;
 }
 
 export type ProjectUpdateSink = (update: ValidatedProjectUpdate) => void;
@@ -24,6 +25,8 @@ const KNOWN_TYPES: ReadonlySet<string> = new Set<string>([
   "comment.created",
   "assignment.changed",
   "tags.changed",
+  "reproduction.ready",
+  "reproduction.failed",
 ]);
 
 const UUID_RE =
@@ -68,12 +71,17 @@ export function validateProjectUpdate(
   if (eventId !== undefined && !isUuid(eventId)) {
     return null;
   }
+  const reproductionId = record["reproductionId"];
+  if (reproductionId !== undefined && !isUuid(reproductionId)) {
+    return null;
+  }
   return {
     version: 1,
     type: type as ProjectUpdateType,
     projectId,
     issueId,
     ...(eventId !== undefined ? { eventId } : {}),
+    ...(reproductionId !== undefined ? { reproductionId } : {}),
   };
 }
 

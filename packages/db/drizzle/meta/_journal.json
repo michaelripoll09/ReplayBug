@@ -43,6 +43,13 @@
       "when": 1789764470294,
       "tag": "0005_broad_ronan",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789786157016,
+      "tag": "0006_premium_nova",
+      "breakpoints": true
     }
   ]
 }

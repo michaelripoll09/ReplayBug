@@ -71,6 +71,15 @@ export function canCommentOnIssue(role: WorkspaceRole): boolean {
   return role !== "viewer";
 }
 
+/**
+ * Playwright reproductions: `reproduction:generate` needs member or above
+ * (backend `policy.ts` is the authority — viewer 403s). Read (inspect,
+ * copy, download) is allowed for every role including viewer.
+ */
+export function canGenerateReproduction(role: WorkspaceRole): boolean {
+  return role !== "viewer";
+}
+
 export function isReadOnly(role: WorkspaceRole): boolean {
   return role === "member" || role === "viewer";
 }

@@ -24,6 +24,7 @@
     "@playwright/test": "^1.63.0",
     "@replaybug/config": "workspace:*",
     "@replaybug/db": "workspace:*",
+    "@replaybug/reproducer": "workspace:*",
     "@types/node": "22.20.3",
     "@types/pg": "^8.23.1",
     "@types/react": "19.3.0",

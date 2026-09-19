@@ -804,6 +804,99 @@ export const rateLimitBuckets = pgTable(
   ],
 );
 
+/**
+ * Playwright reproduction tests — one row per generation request.
+ *
+ * `event_id` and `generated_by_user_id` are nullable with SET NULL so raw
+ * occurrence expiry or user deletion never deletes reproduction history.
+ * `idempotency_key_hash` backs request dedup (find-by-hash); NULL means
+ * "no idempotency key supplied". `completed_at` is set exactly once when
+ * the worker marks the row ready/failed.
+ */
+export const reproductionTests = pgTable(
+  "reproduction_tests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "set null",
+    }),
+    generatedByUserId: text("generated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    language: text("language").notNull().default("typescript"),
+    framework: text("framework").notNull().default("playwright"),
+    code: text("code"),
+    hasRedactedSteps: boolean("has_redacted_steps").notNull().default(false),
+    generatorVersion: text("generator_version").notNull(),
+    status: text("status").notNull().default("pending"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    idempotencyKeyHash: text("idempotency_key_hash"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("reproduction_tests_issue_created_idx").on(t.issueId, t.createdAt),
+    index("reproduction_tests_event_created_idx").on(t.eventId, t.createdAt),
+    index("reproduction_tests_generated_by_created_idx").on(
+      t.generatedByUserId,
+      t.createdAt,
+    ),
+    index("reproduction_tests_status_idx").on(t.status),
+    check(
+      "reproduction_tests_status_check",
+      sql`${t.status} IN ('pending','ready','failed')`,
+    ),
+    check(
+      "reproduction_tests_language_check",
+      sql`${t.language} IN ('typescript')`,
+    ),
+    check(
+      "reproduction_tests_framework_check",
+      sql`${t.framework} IN ('playwright')`,
+    ),
+    check(
+      "reproduction_tests_error_code_check",
+      sql`${t.errorCode} IS NULL OR ${t.errorCode} IN ('REPRODUCTION_BASE_URL_REQUIRED','REPRODUCTION_UNSUPPORTED_FAILURE','REPRODUCTION_OUTPUT_TOO_LARGE','REPRODUCTION_INVALID_EVIDENCE','REPRODUCTION_FAILED')`,
+    ),
+  ],
+);
+
+/**
+ * Reproduction generation outbox — ensures accepted reproductions are
+ * eventually generated. One row per reproduction, inserted in the same
+ * transaction as the pending reproduction row.
+ *
+ * `dispatched_at` means "durably handed to pg-boss", NOT "generated".
+ * Final generation state lives on `reproduction_tests.status`.
+ */
+export const reproductionGenerationOutbox = pgTable(
+  "reproduction_generation_outbox",
+  {
+    reproductionId: uuid("reproduction_id")
+      .primaryKey()
+      .references(() => reproductionTests.id, { onDelete: "cascade" }),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("reproduction_generation_outbox_dispatched_idx").on(t.dispatchedAt),
+    index("reproduction_generation_outbox_pending_created_idx").on(
+      t.dispatchedAt,
+      t.createdAt,
+    ),
+  ],
+);
+
 /** Drizzle schema map shared by the client factory and migrations. */
 export const schema = {
   user: users,
@@ -829,6 +922,8 @@ export const schema = {
   notifications,
   events,
   eventProcessingOutbox,
+  reproductionTests,
+  reproductionGenerationOutbox,
   rateLimitBuckets,
 } as const;
 

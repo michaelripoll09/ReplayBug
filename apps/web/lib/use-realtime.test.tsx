@@ -111,4 +111,73 @@ describe("useProjectRealtime", () => {
     expect(result.current).toBe("closed");
     expect(FakeEventSource.instances).toHaveLength(0);
   });
+
+  it("maps reproduction.ready to list + detail + activity only", () => {
+    const { client, wrapper } = setup();
+    const seen: unknown[][] = [];
+    vi.spyOn(client, "invalidateQueries").mockImplementation((async (filters: {
+      queryKey?: unknown;
+    }) => {
+      seen.push(filters.queryKey as unknown[]);
+    }) as typeof client.invalidateQueries);
+    renderHook(
+      () =>
+        useProjectRealtime(PROJECT, {
+          createEventSource: (url) => new FakeEventSource(url),
+        }),
+      { wrapper },
+    );
+    const source = FakeEventSource.instances[0];
+    const reproductionId = "33333333-3333-4333-8333-333333333333";
+    act(() => {
+      source?.emitNamed(
+        "project-update",
+        JSON.stringify({
+          version: 1,
+          type: "reproduction.ready",
+          projectId: PROJECT,
+          issueId: ISSUE,
+          reproductionId,
+        }),
+      );
+    });
+    expect(seen).toContainEqual(["issues", ISSUE, "reproductions"]);
+    expect(seen).toContainEqual(["reproductions", reproductionId]);
+    expect(seen).toContainEqual(["issues", ISSUE, "activity"]);
+    expect(seen).toHaveLength(3);
+  });
+
+  it("maps reproduction.failed to detail + notifications only", () => {
+    const { client, wrapper } = setup();
+    const seen: unknown[][] = [];
+    vi.spyOn(client, "invalidateQueries").mockImplementation((async (filters: {
+      queryKey?: unknown;
+    }) => {
+      seen.push(filters.queryKey as unknown[]);
+    }) as typeof client.invalidateQueries);
+    renderHook(
+      () =>
+        useProjectRealtime(PROJECT, {
+          createEventSource: (url) => new FakeEventSource(url),
+        }),
+      { wrapper },
+    );
+    const source = FakeEventSource.instances[0];
+    const reproductionId = "33333333-3333-4333-8333-333333333333";
+    act(() => {
+      source?.emitNamed(
+        "project-update",
+        JSON.stringify({
+          version: 1,
+          type: "reproduction.failed",
+          projectId: PROJECT,
+          issueId: ISSUE,
+          reproductionId,
+        }),
+      );
+    });
+    expect(seen).toContainEqual(["reproductions", reproductionId]);
+    expect(seen).toContainEqual(["notifications"]);
+    expect(seen).toHaveLength(2);
+  });
 });

@@ -17,11 +17,35 @@ import { Label } from "@/components/ui/label";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { RouteSkeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/forms/feedback";
+import { EmptyState, FieldError } from "@/components/forms/feedback";
+
+/**
+ * Client-side base-URL check mirroring the server's `parseBaseUrl`
+ * (http(s) origins only — `javascript:` and friends are rejected
+ * server-side with a validation error). Empty stays allowed (clears it).
+ */
+export function isValidBaseUrl(value: string): boolean {
+  if (value.trim() === "") {
+    return true;
+  }
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 const envSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
-  baseUrl: z.string().trim().max(2000).optional(),
+  baseUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .refine((v) => v === undefined || isValidBaseUrl(v), {
+      message: "Base URL must be an http(s) URL",
+    }),
   isDefault: z.boolean().optional(),
 });
 
@@ -329,7 +353,19 @@ export function EnvironmentsSettings({
                 id={`${nameId}-url`}
                 placeholder="https://staging.example.com"
                 inputMode="url"
+                aria-invalid={
+                  form.formState.errors.baseUrl !== undefined ? true : undefined
+                }
+                aria-describedby={
+                  form.formState.errors.baseUrl !== undefined
+                    ? `${nameId}-url-error`
+                    : undefined
+                }
                 {...form.register("baseUrl")}
+              />
+              <FieldError
+                id={`${nameId}-url-error`}
+                message={form.formState.errors.baseUrl?.message}
               />
             </div>
           </div>
@@ -363,8 +399,9 @@ function EditRow({
 }): React.JSX.Element {
   const [name, setName] = React.useState(initialName);
   const [baseUrl, setBaseUrl] = React.useState(initialBaseUrl);
+  const baseUrlValid = isValidBaseUrl(baseUrl);
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex flex-wrap items-center gap-2">
       <input
         aria-label="Environment name"
         className="h-8 rounded border border-zinc-200 px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
@@ -373,15 +410,21 @@ function EditRow({
       />
       <input
         aria-label="Environment base URL"
+        aria-invalid={baseUrlValid ? undefined : true}
         className="h-8 rounded border border-zinc-200 px-2 font-mono text-xs dark:border-zinc-800 dark:bg-zinc-950"
         value={baseUrl}
         onChange={(e) => setBaseUrl(e.target.value)}
       />
+      {!baseUrlValid ? (
+        <span role="alert" className="text-xs text-red-600 dark:text-red-400">
+          Base URL must be an http(s) URL
+        </span>
+      ) : null}
       <Button
         type="button"
         size="sm"
         onClick={() => onSave(name.trim(), baseUrl.trim())}
-        disabled={name.trim().length === 0}
+        disabled={name.trim().length === 0 || !baseUrlValid}
       >
         Save
       </Button>

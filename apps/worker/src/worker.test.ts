@@ -7,6 +7,10 @@ import {
   processEventJobSchema,
   processEventQueueOptions,
 } from "./queues/process-event.js";
+import {
+  GENERATE_REPRODUCTION_JOB_VERSION,
+  GENERATE_REPRODUCTION_QUEUE,
+} from "./queues/reproduction.js";
 import { listRegisteredJobContracts } from "./queues/index.js";
 import { sanitizeOutboxError } from "./dispatcher/publish-batch.js";
 
@@ -23,6 +27,9 @@ describe("loadWorkerConfigFromEnv", () => {
     expect(config.outboxBatchSize).toBe(100);
     expect(config.outboxPollMs).toBe(1000);
     expect(config.outboxReconcileMs).toBe(60_000);
+    expect(config.reproductionOutboxBatchSize).toBe(100);
+    expect(config.reproductionOutboxPollMs).toBe(1000);
+    expect(config.reproductionOutboxReconcileMs).toBe(60_000);
     expect(config.jobRetryLimit).toBe(4);
     expect(config.jobPollMs).toBe(500);
   });
@@ -83,10 +90,14 @@ describe("loadWorkerConfigFromEnv", () => {
 });
 
 describe("process-event job contract", () => {
-  it("registers exactly the process-event queue", () => {
+  it("registers the process-event and generate-reproduction queues", () => {
     const contracts = listRegisteredJobContracts();
     expect(contracts).toEqual([
       { name: PROCESS_EVENT_QUEUE, version: PROCESS_EVENT_JOB_VERSION },
+      {
+        name: GENERATE_REPRODUCTION_QUEUE,
+        version: GENERATE_REPRODUCTION_JOB_VERSION,
+      },
     ]);
   });
 

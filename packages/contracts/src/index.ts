@@ -184,6 +184,26 @@ export type {
   ProjectMetrics,
 } from "./metrics.js";
 export {
+  reproductionStatusSchema,
+  reproductionErrorCodeSchema,
+  reproductionGeneratedBySchema,
+  reproductionSummarySchema,
+  reproductionDetailSchema,
+  createReproductionResponseSchema,
+  reproductionListQuerySchema,
+  reproductionListResponseSchema,
+} from "./reproductions.js";
+export type {
+  ReproductionStatus,
+  ReproductionErrorCode,
+  ReproductionGeneratedBy,
+  ReproductionSummary,
+  ReproductionDetail,
+  CreateReproductionResponse,
+  ReproductionListQuery,
+  ReproductionListResponse,
+} from "./reproductions.js";
+export {
   PROTOCOL_VERSION,
   SENSITIVE_URL_PARAMS,
   TELEMETRY_LIMITS,

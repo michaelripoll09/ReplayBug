@@ -2,12 +2,15 @@ import {
   PROCESS_EVENT_JOB_VERSION,
   PROCESS_EVENT_QUEUE,
 } from "./process-event.js";
+import {
+  GENERATE_REPRODUCTION_JOB_VERSION,
+  GENERATE_REPRODUCTION_QUEUE,
+} from "./reproduction.js";
 
 /**
- * Registry of the job contracts this worker consumes. One queue exists in
- * this block on purpose: pg-boss makes adding queues cheap, but scope is
- * explicit, so future jobs (retention, reproduction, AI analysis) are added
- * by later blocks — never incidentally.
+ * Registry of the job contracts this worker consumes. Scope is explicit:
+ * new jobs (retention, AI analysis) are added by later blocks — never
+ * incidentally.
  */
 export interface JobContractSummary {
   name: string;
@@ -15,5 +18,11 @@ export interface JobContractSummary {
 }
 
 export function listRegisteredJobContracts(): JobContractSummary[] {
-  return [{ name: PROCESS_EVENT_QUEUE, version: PROCESS_EVENT_JOB_VERSION }];
+  return [
+    { name: PROCESS_EVENT_QUEUE, version: PROCESS_EVENT_JOB_VERSION },
+    {
+      name: GENERATE_REPRODUCTION_QUEUE,
+      version: GENERATE_REPRODUCTION_JOB_VERSION,
+    },
+  ];
 }

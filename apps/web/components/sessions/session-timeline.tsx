@@ -16,6 +16,21 @@ export interface TimelineEntry {
 }
 
 /**
+ * Event types the Playwright generator can turn into script steps.
+ * Everything else is diagnostic-only context (console output, network
+ * failures, messages) — useful for humans, not convertible to actions.
+ */
+const CONVERTIBLE_TIMELINE_TYPES: ReadonlySet<string> = new Set([
+  "navigation",
+  "click",
+  "input",
+]);
+
+export function isConvertibleTimelineType(eventType: string): boolean {
+  return CONVERTIBLE_TIMELINE_TYPES.has(eventType);
+}
+
+/**
  * Developer-oriented session timeline: chronological entries with
  * per-type plain-text summaries. The selected occurrence (if any) is
  * highlighted and scannable by more than color (ring + label).
@@ -56,6 +71,18 @@ export function SessionTimeline({
               </span>
               <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] dark:bg-zinc-800">
                 {entry.eventType}
+              </span>
+              <span
+                title={
+                  isConvertibleTimelineType(entry.eventType)
+                    ? "This step can be converted into a reproduction script action"
+                    : "Diagnostic context only — not converted into script actions"
+                }
+                className="rounded border border-zinc-200 px-1.5 py-0.5 text-[11px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+              >
+                {isConvertibleTimelineType(entry.eventType)
+                  ? "Reproducible"
+                  : "Diagnostic"}
               </span>
               {highlighted ? (
                 <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-[11px] font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">

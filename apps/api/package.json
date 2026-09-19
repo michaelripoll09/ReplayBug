@@ -24,6 +24,7 @@
     "@replaybug/contracts": "workspace:*",
     "@replaybug/db": "workspace:*",
     "@replaybug/observability": "workspace:*",
+    "@replaybug/reproducer": "workspace:*",
     "better-auth": "1.7.5",
     "fastify": "5.12.5",
     "pg": "^8.23.0",

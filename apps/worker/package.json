@@ -18,6 +18,7 @@
     "@replaybug/artifacts": "workspace:*",
     "@replaybug/db": "workspace:*",
     "@replaybug/observability": "workspace:*",
+    "@replaybug/reproducer": "workspace:*",
     "pg-boss": "12.33.0",
     "zod": "4.6.5"
   },

@@ -136,37 +136,38 @@ export function App(): React.JSX.Element {
     }
   };
 
-  const triggerNavigationClickError = () => {
-    // Navigate (simulated via hash change)
-    window.location.hash = "step1";
-    addBreadcrumb({
-      type: "navigation",
-      category: "demo",
-      message: "Navigated to step1",
-      level: "info",
-    });
-
-    // Click simulation
+  const triggerUncaughtError = () => {
+    // Deterministic Navigation → Click → Error with a REAL uncaught
+    // exception: the hash change is captured as navigation, the click is
+    // captured with test_id + role locators, and the delayed throw escapes
+    // every handler so it surfaces as window.error/pageerror. The SDK
+    // auto-capture reports it; Playwright `page.on('pageerror')` observes
+    // the same failure, which is what generated reproductions assert.
+    window.location.hash = "repro-uncaught-error";
+    setLastError("Uncaught error armed…");
     setTimeout(() => {
-      addBreadcrumb({
-        type: "click",
-        category: "demo",
-        message: "Clicked step1 button",
-        level: "info",
-        data: { element: "button.step1" },
-      });
+      throw new Error("DEMO: Uncaught error after navigation and click");
+    }, 100);
+  };
 
-      // Click that causes error
-      setTimeout(() => {
-        try {
-          throw new Error("DEMO: Error after navigation and click");
-        } catch (error) {
-          captureException(error as Error, {
-            scenario: "navigation-click-error",
-          });
-          setLastError("Navigation → Click → Error captured");
-        }
-      }, 100);
+  const triggerNavigationClickError = () => {
+    // Deterministic Navigation → Click → Error:
+    // - the click itself is captured by the SDK auto-capture (real click
+    //   event with test_id + role locators, no manual breadcrumbs),
+    // - the hash change is captured as a real hashchange navigation,
+    // - the delayed exception is the assertable failure.
+    window.location.hash = "repro-nav-click-error";
+
+    // Error after navigation and click (async so navigation/click flush first).
+    setTimeout(() => {
+      try {
+        throw new Error("DEMO: Error after navigation and click");
+      } catch (error) {
+        captureException(error as Error, {
+          scenario: "navigation-click-error",
+        });
+        setLastError("Navigation → Click → Error captured");
+      }
     }, 100);
   };
 
@@ -222,30 +223,35 @@ export function App(): React.JSX.Element {
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
           <button
             onClick={triggerJsException}
+            data-testid="demo-js-exception"
             style={{ padding: "0.75rem 1rem" }}
           >
             1. JavaScript Exception
           </button>
           <button
             onClick={triggerUnhandledRejection}
+            data-testid="demo-unhandled-rejection"
             style={{ padding: "0.75rem 1rem" }}
           >
             2. Unhandled Promise Rejection
           </button>
           <button
             onClick={triggerConsoleError}
+            data-testid="demo-console-error"
             style={{ padding: "0.75rem 1rem" }}
           >
             3. Console Error
           </button>
           <button
             onClick={triggerFailedFetch}
+            data-testid="demo-failed-fetch"
             style={{ padding: "0.75rem 1rem" }}
           >
             4. Failed Fetch (500)
           </button>
           <button
             onClick={triggerNavigationClickError}
+            data-testid="demo-nav-click-error"
             style={{ padding: "0.75rem 1rem" }}
           >
             5. Navigation → Click → Error
@@ -256,6 +262,13 @@ export function App(): React.JSX.Element {
             data-testid={MINIFIED_RELEASE_TEST_ID}
           >
             {MINIFIED_RELEASE_BUTTON_LABEL}
+          </button>
+          <button
+            onClick={triggerUncaughtError}
+            data-testid="demo-uncaught-error"
+            style={{ padding: "0.75rem 1rem" }}
+          >
+            7. Uncaught Error (pageerror)
           </button>
         </div>
       </section>
@@ -299,6 +312,9 @@ export function App(): React.JSX.Element {
             <input
               ref={safeInputRef}
               type="text"
+              id="repro-safe-input"
+              name="repro-safe-input"
+              data-testid="repro-safe-input"
               placeholder="SAFE_REPLAYBUG_VALUE"
               data-replaybug-safe="true"
               style={{
@@ -388,6 +404,9 @@ export function App(): React.JSX.Element {
             <input
               ref={maskedInputRef}
               type="text"
+              id="repro-masked-input"
+              name="repro-masked-input"
+              data-testid="repro-masked-input"
               placeholder="MASKED_REPLAYBUG_VALUE"
               data-replaybug-mask="true"
               style={{

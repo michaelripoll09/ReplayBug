@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { RBAC_MATRIX, hasCapability } from "./policy.js";
+import {
+  RBAC_MATRIX,
+  canGenerateReproductions,
+  canReadReproductions,
+  hasCapability,
+} from "./policy.js";
 
 describe("capability policy", () => {
   it("owner can do everything", () => {
@@ -73,5 +78,34 @@ describe("capability policy", () => {
     expect(hasCapability("viewer", "issue:assign")).toBe(false);
     expect(hasCapability("viewer", "issue:manage-tags")).toBe(false);
     expect(hasCapability("viewer", "issue:comment")).toBe(false);
+  });
+
+  it("viewer can read reproductions but cannot generate", () => {
+    expect(hasCapability("viewer", "reproduction:read")).toBe(true);
+    expect(hasCapability("viewer", "reproduction:generate")).toBe(false);
+    expect(canReadReproductions("viewer")).toBe(true);
+    expect(canGenerateReproductions("viewer")).toBe(false);
+    expect(RBAC_MATRIX.viewer["reproduction:read"]).toBe(true);
+    expect(RBAC_MATRIX.viewer["reproduction:generate"]).toBe(false);
+  });
+
+  it("member can read and generate reproductions", () => {
+    expect(hasCapability("member", "reproduction:read")).toBe(true);
+    expect(hasCapability("member", "reproduction:generate")).toBe(true);
+    expect(canReadReproductions("member")).toBe(true);
+    expect(canGenerateReproductions("member")).toBe(true);
+    expect(RBAC_MATRIX.member["reproduction:read"]).toBe(true);
+    expect(RBAC_MATRIX.member["reproduction:generate"]).toBe(true);
+  });
+
+  it("owner/admin can read and generate reproductions", () => {
+    for (const role of ["owner", "admin"] as const) {
+      expect(hasCapability(role, "reproduction:read")).toBe(true);
+      expect(hasCapability(role, "reproduction:generate")).toBe(true);
+      expect(canReadReproductions(role)).toBe(true);
+      expect(canGenerateReproductions(role)).toBe(true);
+      expect(RBAC_MATRIX[role]["reproduction:read"]).toBe(true);
+      expect(RBAC_MATRIX[role]["reproduction:generate"]).toBe(true);
+    }
   });
 });

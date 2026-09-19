@@ -33,6 +33,7 @@ import { registerSecretTokenRoutes } from "./routes/secret-tokens.js";
 import { registerCliRoutes } from "./routes/cli.js";
 import { registerDashboardReleaseRoutes } from "./routes/dashboard-releases.js";
 import { registerIssueRoutes } from "./routes/issues.js";
+import { registerReproductionRoutes } from "./routes/reproductions.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerRealtimeRoutes } from "./routes/realtime.js";
 import { createProjectUpdatesBroker } from "./realtime/broker.js";
@@ -71,6 +72,7 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
       "Authorization",
       "X-Requested-With",
       "x-request-id",
+      "Idempotency-Key",
     ],
     credentials: true,
     maxAge: 86400,
@@ -135,6 +137,10 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
           {
             name: "Issues",
             description: "Issue list/detail, lifecycle, tags, comments",
+          },
+          {
+            name: "Reproductions",
+            description: "Playwright reproduction generation + download",
           },
           {
             name: "Tags",
@@ -256,6 +262,7 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
     },
   });
   await registerIssueRoutes(app, { db, auth });
+  await registerReproductionRoutes(app, { db, auth });
   await registerDashboardReleaseRoutes(app, { db, auth });
   await registerNotificationRoutes(app, { db, auth });
 

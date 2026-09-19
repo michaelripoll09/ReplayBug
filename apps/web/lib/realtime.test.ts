@@ -96,6 +96,43 @@ describe("parseProjectUpdate", () => {
       parseProjectUpdate(updateData({ issueId: "x" }), PROJECT),
     ).toBeNull();
   });
+
+  it("accepts reproduction updates with a valid reproduction id", () => {
+    const reproductionId = "33333333-3333-4333-8333-333333333333";
+    expect(
+      parseProjectUpdate(
+        updateData({ type: "reproduction.ready", reproductionId }),
+        PROJECT,
+      ),
+    ).toEqual({
+      version: 1,
+      type: "reproduction.ready",
+      projectId: PROJECT,
+      issueId: ISSUE,
+      reproductionId,
+    });
+    expect(
+      parseProjectUpdate(
+        updateData({ type: "reproduction.failed", reproductionId }),
+        PROJECT,
+      ),
+    ).toEqual({
+      version: 1,
+      type: "reproduction.failed",
+      projectId: PROJECT,
+      issueId: ISSUE,
+      reproductionId,
+    });
+  });
+
+  it("drops reproduction updates with a malformed reproduction id", () => {
+    expect(
+      parseProjectUpdate(
+        updateData({ type: "reproduction.ready", reproductionId: "x" }),
+        PROJECT,
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("createProjectEventStream", () => {

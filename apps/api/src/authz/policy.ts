@@ -18,6 +18,8 @@ import type { WorkspaceRole } from "@replaybug/contracts";
  *   comments) and reads sessions + own notifications.
  * - viewer: read-only (same read set as member this block). Block 6: issue,
  *   session and own-notification reads only; no issue mutation.
+ *   Playwright reproductions: `reproduction:read` min viewer,
+ *   `reproduction:generate` min member.
  *
  * Project access is derived from workspace membership: there is no
  * project-membership system. Any workspace member can read any project in
@@ -44,7 +46,9 @@ export type Capability =
   | "issue:manage-tags"
   | "issue:comment"
   | "session:read"
-  | "notification:read-own";
+  | "notification:read-own"
+  | "reproduction:read"
+  | "reproduction:generate";
 
 const ROLE_RANK: Record<WorkspaceRole, number> = {
   viewer: 0,
@@ -74,6 +78,8 @@ const CAPABILITY_MIN_ROLE: Record<Capability, WorkspaceRole> = {
   "issue:comment": "member",
   "session:read": "viewer",
   "notification:read-own": "viewer",
+  "reproduction:read": "viewer",
+  "reproduction:generate": "member",
 };
 
 export function hasCapability(
@@ -135,6 +141,14 @@ export function canReadOwnNotifications(role: WorkspaceRole): boolean {
   return hasCapability(role, "notification:read-own");
 }
 
+export function canReadReproductions(role: WorkspaceRole): boolean {
+  return hasCapability(role, "reproduction:read");
+}
+
+export function canGenerateReproductions(role: WorkspaceRole): boolean {
+  return hasCapability(role, "reproduction:generate");
+}
+
 /** RBAC matrix for docs/tests. */
 export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
   owner: {
@@ -158,6 +172,8 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "issue:comment": true,
     "session:read": true,
     "notification:read-own": true,
+    "reproduction:read": true,
+    "reproduction:generate": true,
   },
   admin: {
     "workspace:read": true,
@@ -180,6 +196,8 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "issue:comment": true,
     "session:read": true,
     "notification:read-own": true,
+    "reproduction:read": true,
+    "reproduction:generate": true,
   },
   member: {
     "workspace:read": true,
@@ -202,6 +220,8 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "issue:comment": true,
     "session:read": true,
     "notification:read-own": true,
+    "reproduction:read": true,
+    "reproduction:generate": true,
   },
   viewer: {
     "workspace:read": true,
@@ -224,5 +244,7 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "issue:comment": false,
     "session:read": true,
     "notification:read-own": true,
+    "reproduction:read": true,
+    "reproduction:generate": false,
   },
 };

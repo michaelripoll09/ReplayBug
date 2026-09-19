@@ -13,16 +13,27 @@ import {
   processEventQueueOptions,
   processEventSendOptions,
 } from "./queues/process-event.js";
+import {
+  GENERATE_REPRODUCTION_QUEUE,
+  generateReproductionQueueOptions,
+} from "./queues/reproduction.js";
 import { createProcessEventJobHandler } from "./processors/process-event-handler.js";
+import { createGenerateReproductionJobHandler } from "./processors/generate-reproduction.js";
 import { startOutboxDispatcher } from "./dispatcher/outbox-dispatcher.js";
 import { startOutboxReconciliation } from "./reconciliation/outbox-reconciliation.js";
+import {
+  createPgBossReproductionPublisher,
+  startReproductionDispatcher,
+  startReproductionReconciliation,
+} from "./dispatcher/reproduction-dispatcher.js";
 import type { ProcessEventPublisher } from "./dispatcher/publish-batch.js";
 
 /**
- * Worker composition root: pg-boss, the process-event consumer and the two
- * outbox loops. Ordering on startup is deliberate — pg-boss schema/queues
- * first, then consumers, then dispatching — and on shutdown the reverse:
- * stop claiming work, wait for in-flight jobs, then close pg-boss.
+ * Worker composition root: pg-boss, the process-event + generate-reproduction
+ * consumers and the outbox loops. Ordering on startup is deliberate —
+ * pg-boss schema/queues first, then consumers, then dispatching — and on
+ * shutdown the reverse: stop claiming work, wait for in-flight jobs, then
+ * close pg-boss.
  */
 
 /** pg-boss publish adapter with a stable job identity per event. */
@@ -98,8 +109,13 @@ export async function startWorkerRuntime(
 
   await boss.start();
   await boss.createQueue(PROCESS_EVENT_QUEUE, processEventQueueOptions(config));
+  await boss.createQueue(
+    GENERATE_REPRODUCTION_QUEUE,
+    generateReproductionQueueOptions(config),
+  );
 
   const publisher = createPgBossPublisher(boss);
+  const reproductionPublisher = createPgBossReproductionPublisher(boss);
   const storage = resolveArtifactStorage(logger);
   const handler = createProcessEventJobHandler({
     db: client.db,
@@ -114,6 +130,20 @@ export async function startWorkerRuntime(
       pollingIntervalSeconds: config.jobPollMs / 1000,
     },
     handler,
+  );
+
+  const reproductionHandler = createGenerateReproductionJobHandler({
+    db: client.db,
+    logger,
+  });
+  await boss.work(
+    GENERATE_REPRODUCTION_QUEUE,
+    {
+      localConcurrency: config.concurrency,
+      batchSize: 1,
+      pollingIntervalSeconds: config.jobPollMs / 1000,
+    },
+    reproductionHandler,
   );
 
   const dispatcher = startOutboxDispatcher({
@@ -131,6 +161,24 @@ export async function startWorkerRuntime(
     intervalMs: config.outboxReconcileMs,
     staleAfterMs: Math.max(config.outboxReconcileMs, config.outboxPollMs * 5),
   });
+  const reproductionDispatcher = startReproductionDispatcher({
+    db: client.db,
+    publisher: reproductionPublisher,
+    logger,
+    batchSize: config.reproductionOutboxBatchSize,
+    pollMs: config.reproductionOutboxPollMs,
+  });
+  const reproductionReconciliation = startReproductionReconciliation({
+    db: client.db,
+    publisher: reproductionPublisher,
+    logger,
+    batchSize: config.reproductionOutboxBatchSize,
+    intervalMs: config.reproductionOutboxReconcileMs,
+    staleAfterMs: Math.max(
+      config.reproductionOutboxReconcileMs,
+      config.reproductionOutboxPollMs * 5,
+    ),
+  });
 
   let stopped = false;
   return {
@@ -143,7 +191,10 @@ export async function startWorkerRuntime(
       logger.info("Worker stopping: no longer claiming new work");
       await dispatcher.stop();
       await reconciliation.stop();
+      await reproductionDispatcher.stop();
+      await reproductionReconciliation.stop();
       await boss.offWork(PROCESS_EVENT_QUEUE, { wait: true });
+      await boss.offWork(GENERATE_REPRODUCTION_QUEUE, { wait: true });
       await boss.stop({
         graceful: true,
         timeout: SHUTDOWN_TIMEOUT_MS,

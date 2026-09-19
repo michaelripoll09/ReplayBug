@@ -21,6 +21,7 @@
     "api:check": "pnpm api:generate && git diff --exit-code -- packages/api-client/openapi/openapi.json packages/api-client/src/schema.d.ts",
     "sdk:size": "node scripts/sdk-size.mjs",
     "worker:latency": "tsx scripts/worker-latency-smoke.ts",
+    "verify:generated-test": "tsx scripts/verify-generated-test.ts",
     "test:sdk": "pnpm --filter @replaybug/sdk test",
     "test:e2e": "pnpm --filter @replaybug/web test:e2e && pnpm --filter @replaybug/demo test:e2e"
   },

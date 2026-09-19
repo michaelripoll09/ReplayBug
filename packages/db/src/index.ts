@@ -44,6 +44,8 @@ export {
   notifications,
   events,
   eventProcessingOutbox,
+  reproductionTests,
+  reproductionGenerationOutbox,
   rateLimitBuckets,
   processingStateEnum,
 } from "./schema.js";
@@ -137,6 +139,7 @@ export * as SessionRepo from "./repositories/sessions.js";
 export * as OccurrenceRepo from "./repositories/occurrences.js";
 export * as EventProcessingRepo from "./repositories/event-processing.js";
 export * as OutboxRepo from "./repositories/outbox.js";
+export * as ReproductionRepo from "./repositories/reproductions.js";
 export * as NotificationRepo from "./repositories/notifications.js";
 export * as ProjectUpdatesRepo from "./repositories/project-updates.js";
 export {
@@ -168,6 +171,40 @@ export {
   recordOutboxDispatchFailure,
 } from "./repositories/outbox.js";
 export type { OutboxRow, PendingOutboxItem } from "./repositories/outbox.js";
+export {
+  insertPendingReproduction,
+  findReproductionById,
+  lockReproductionById,
+  findReproductionByIdempotency,
+  encodeReproductionCursor,
+  decodeReproductionCursor,
+  listIssueReproductions,
+  markReproductionReady,
+  markReproductionFailed,
+  insertReproductionActivity,
+  insertReproductionOutbox,
+  claimPendingReproductionOutboxBatch,
+  claimStaleReproductionOutboxBatch,
+  listStaleReproductionOutbox,
+  markReproductionOutboxDispatched,
+  recordReproductionOutboxFailure,
+  REPRODUCTION_STATUSES,
+  REPRODUCTION_ERROR_CODES,
+} from "./repositories/reproductions.js";
+export type {
+  ReproductionRow,
+  ReproductionOutboxRow,
+  ReproductionStatus,
+  ReproductionErrorCode,
+  CreatePendingReproductionInput,
+  ReproductionCursor,
+  ListIssueReproductionsInput,
+  ListIssueReproductionsResult,
+  MarkReproductionReadyInput,
+  MarkReproductionFailedInput,
+  CreateReproductionActivityInput,
+  PendingReproductionOutboxItem,
+} from "./repositories/reproductions.js";
 export {
   lockEventForProcessing,
   getEventForSymbolication,

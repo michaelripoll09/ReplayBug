@@ -465,8 +465,8 @@ describe("migrations against real PostgreSQL", () => {
         `SELECT COUNT(*)::int AS count FROM drizzle.__drizzle_migrations`,
       );
       // One journal row per migration file
-      // (0000 + 0001 + 0002 + 0003 + 0004 + 0005), never duplicated.
-      expect(journal.rows[0]?.count).toBe(6);
+      // (0000 + 0001 + 0002 + 0003 + 0004 + 0005 + 0006), never duplicated.
+      expect(journal.rows[0]?.count).toBe(7);
     });
   });
 
@@ -843,6 +843,178 @@ describe("migrations against real PostgreSQL", () => {
         `SELECT COUNT(*)::int AS count FROM release_artifacts`,
       );
       expect(orphanArtifacts.rows[0]?.count).toBe(0);
+    });
+  });
+
+  it("upgrades a Block 7 database to Block 8 preserving data and adding reproductions", async () => {
+    const name = await createTempDatabase();
+    const databaseUrl = tempDatabaseUrl(name);
+
+    // 1. Block 7 schema (0000 through 0005).
+    const block7Folder = await buildPartialMigrationsFolder(5);
+    await runMigrations(databaseUrl, block7Folder);
+
+    const projectId = "11111111-1111-4111-8111-111111111111";
+    const sessionId = "22222222-2222-4222-8222-222222222222";
+    const eventId = "33333333-3333-4333-8333-333333333333";
+    const issueId = "44444444-4444-4444-8444-444444444444";
+    const releaseId = "55555555-5555-4555-8555-555555555555";
+
+    // 2. Block 7 fixtures: user, workspace, project, secret token,
+    //    release + artifact, telemetry, issue + comment + tag,
+    //    source-mapped event.
+    await withPool(databaseUrl, async (pool) => {
+      await pool.query(
+        `INSERT INTO "user" ("id", "name", "email")
+         VALUES ('fixture-user-8', 'Fixture User', 'fixture8@example.com')`,
+      );
+      await pool.query(
+        `INSERT INTO workspaces ("id", "name", "slug", "created_by_user_id")
+         VALUES ('66666666-6666-4666-8666-666666666666', 'Fixture WS', 'fixture-ws-8', 'fixture-user-8')`,
+      );
+      await pool.query(
+        `INSERT INTO projects ("id", "workspace_id", "name", "slug")
+         VALUES ($1, '66666666-6666-4666-8666-666666666666',
+                 'Fixture Proj', 'fixture-proj-8')`,
+        [projectId],
+      );
+      await pool.query(
+        `INSERT INTO project_keys ("project_id", "kind", "name", "prefix", "key_hash")
+         VALUES ($1, 'secret', 'ci-token', 'bcdef123',
+                 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')`,
+        [projectId],
+      );
+      await pool.query(
+        `INSERT INTO releases ("id", "project_id", "version", "commit_sha", "repository_url")
+         VALUES ($1, $2, 'web@1.4.2', 'abc1234', 'https://github.com/acme/app')`,
+        [releaseId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO release_artifacts
+           ("release_id", "artifact_path", "storage_key", "content_hash", "size_bytes", "artifact_type")
+         VALUES ($1, 'assets/app.js.map', 'key-8',
+                 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                 2048, 'source_map')`,
+        [releaseId],
+      );
+      await pool.query(
+        `INSERT INTO telemetry_sessions
+           ("id", "project_id", "sdk_session_id", "environment", "release", "initial_url", "sdk_version")
+         VALUES ($1, $2, 'sdk-session-8', 'production', 'web@1.4.2',
+                 'https://example.com/', 'test-sdk@0.0.0')`,
+        [sessionId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO events
+           ("id", "project_id", "telemetry_session_id", "client_event_id",
+            "sequence_number", "event_type", "occurred_at", "environment",
+            "release", "payload_json", "processing_state",
+            "symbolication_json")
+         VALUES ($1, $2, $3, 'client-event-8', 1, 'exception', now(),
+                 'production', 'web@1.4.2',
+                 '{"values":[{"type":"TypeError","value":"boom"}]}'::jsonb,
+                 'processed',
+                 '{"status":"mapped","mappedFrameCount":1}'::jsonb)`,
+        [eventId, projectId, sessionId],
+      );
+      await pool.query(
+        `INSERT INTO issues
+           ("id", "project_id", "fingerprint", "fingerprint_signature",
+            "type", "title", "normalized_message", "status", "severity",
+            "first_seen_at", "last_seen_at", "occurrence_count",
+            "affected_session_count")
+         VALUES ($1, $2,
+                 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                 'TypeError: boom', 'exception', 'TypeError: boom',
+                 'TypeError: boom', 'open', 'error', now(), now(), 1, 1)`,
+        [issueId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO issue_comments ("issue_id", "author_user_id", "body_markdown")
+         VALUES ($1, 'fixture-user-8', 'looking into it')`,
+        [issueId],
+      );
+    });
+
+    // 3. Apply Block 8 (0006).
+    await runMigrations(databaseUrl, MIGRATIONS_DIR);
+
+    // 4. Everything survives; reproduction tables are usable immediately.
+    await withPool(databaseUrl, async (pool) => {
+      const key = await pool.query(
+        `SELECT kind FROM project_keys WHERE project_id = $1`,
+        [projectId],
+      );
+      expect(key.rows[0]?.kind).toBe("secret");
+
+      const mapped = await pool.query(
+        `SELECT symbolication_json FROM events WHERE id = $1`,
+        [eventId],
+      );
+      expect(
+        (mapped.rows[0]?.symbolication_json as { status?: string })?.status,
+      ).toBe("mapped");
+
+      const comment = await pool.query(
+        `SELECT body_markdown FROM issue_comments WHERE issue_id = $1`,
+        [issueId],
+      );
+      expect(comment.rows[0]?.body_markdown).toBe("looking into it");
+
+      const artifact = await pool.query(
+        `SELECT artifact_type FROM release_artifacts WHERE release_id = $1`,
+        [releaseId],
+      );
+      expect(artifact.rows[0]?.artifact_type).toBe("source_map");
+
+      // New tables accept a full pending → ready lifecycle.
+      const reproId = "77777777-7777-4777-8777-777777777777";
+      await pool.query(
+        `INSERT INTO reproduction_tests
+           ("id", "issue_id", "event_id", "generated_by_user_id",
+            "generator_version", "status", "idempotency_key_hash")
+         VALUES ($1, $2, $3, 'fixture-user-8', '1.0.0', 'pending',
+                 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd')`,
+        [reproId, issueId, eventId],
+      );
+      await pool.query(
+        `INSERT INTO reproduction_generation_outbox ("reproduction_id")
+         VALUES ($1)`,
+        [reproId],
+      );
+      await pool.query(
+        `UPDATE reproduction_tests
+         SET status = 'ready', code = $2, completed_at = now()
+         WHERE id = $1`,
+        [reproId, "import { test, expect } from '@playwright/test';"],
+      );
+      const ready = await pool.query(
+        `SELECT status, generator_version FROM reproduction_tests WHERE id = $1`,
+        [reproId],
+      );
+      expect(ready.rows[0]?.status).toBe("ready");
+      expect(ready.rows[0]?.generator_version).toBe("1.0.0");
+
+      // Guards hold: bad status and bad error codes are rejected.
+      await expect(
+        pool.query(
+          `INSERT INTO reproduction_tests
+             ("issue_id", "event_id", "generated_by_user_id", "generator_version", "status")
+           VALUES ($1, $2, 'fixture-user-8', '1.0.0', 'bogus')`,
+          [issueId, eventId],
+        ),
+      ).rejects.toThrow();
+
+      // Project cascade reaches the new tables.
+      await pool.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+      const orphans = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM reproduction_tests`,
+      );
+      expect(orphans.rows[0]?.count).toBe(0);
+      const orphanOutbox = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM reproduction_generation_outbox`,
+      );
+      expect(orphanOutbox.rows[0]?.count).toBe(0);
     });
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { activityQuery } from "@/lib/queries";
 import { Alert } from "@/components/ui/alert";
@@ -53,13 +54,18 @@ function describeActivity(
 
 /**
  * Append-only issue activity timeline, newest first. Metadata stays
- * minimal ({from,to}, {userId}, {commentId}) — bodies never appear here.
+ * minimal ({from,to}, {userId}, {commentId}, {reproductionId}) — bodies
+ * and code never appear here. Reproduction rows link to the generation
+ * instead of dumping raw JSON.
  */
 export function ActivityTimeline({
   issueId,
+  projectId,
   members,
 }: {
   issueId: string;
+  /** Enables the reproduction deep-link; omit to render plain text. */
+  projectId?: string | undefined;
   members: ActivityMember[];
 }) {
   const activity = useQuery(activityQuery(issueId, { limit: 50 }));
@@ -87,27 +93,45 @@ export function ActivityTimeline({
           actor: { id: string; name: string } | null;
           metadata: Record<string, unknown>;
           createdAt: string;
-        }) => (
-          <li
-            key={item.id}
-            className="flex items-baseline justify-between gap-3 text-sm"
-          >
-            <span>
-              {describeActivity(
-                item.type,
-                item.actor?.name ?? "System",
-                item.metadata,
-                members,
-              )}
-            </span>
-            <span
-              className="shrink-0 font-mono text-xs text-zinc-500"
-              title={item.createdAt}
+        }) => {
+          const reproductionId =
+            item.type === "reproduction_generated" &&
+            typeof item.metadata["reproductionId"] === "string"
+              ? (item.metadata["reproductionId"] as string)
+              : null;
+          return (
+            <li
+              key={item.id}
+              className="flex items-baseline justify-between gap-3 text-sm"
             >
-              {formatDateTime(item.createdAt)}
-            </span>
-          </li>
-        ),
+              <span>
+                {describeActivity(
+                  item.type,
+                  item.actor?.name ?? "System",
+                  item.metadata,
+                  members,
+                )}
+                {reproductionId !== null && projectId !== undefined ? (
+                  <>
+                    {" · "}
+                    <Link
+                      href={`/app/projects/${projectId}/issues/${issueId}?reproduction=${reproductionId}`}
+                      className="underline"
+                    >
+                      View reproduction
+                    </Link>
+                  </>
+                ) : null}
+              </span>
+              <span
+                className="shrink-0 font-mono text-xs text-zinc-500"
+                title={item.createdAt}
+              >
+                {formatDateTime(item.createdAt)}
+              </span>
+            </li>
+          );
+        },
       )}
     </ol>
   );

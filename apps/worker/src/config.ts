@@ -27,6 +27,27 @@ export const workerConfigSchema = z.object({
     .min(1_000)
     .max(3_600_000)
     .default(60_000),
+  /** Reproduction outbox rows claimed per dispatch transaction. */
+  reproductionOutboxBatchSize: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1000)
+    .default(100),
+  /** Delay between reproduction outbox dispatch passes. */
+  reproductionOutboxPollMs: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .max(60_000)
+    .default(1000),
+  /** Delay between reproduction outbox reconciliation passes. */
+  reproductionOutboxReconcileMs: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(3_600_000)
+    .default(60_000),
   /** pg-boss retries per process-event job (0 disables retries). */
   jobRetryLimit: z.coerce.number().int().min(0).max(10).default(4),
   /** pg-boss worker poll interval; 500 ms is the pg-boss minimum. */
@@ -48,6 +69,11 @@ export function loadWorkerConfigFromEnv(
     outboxBatchSize: env["REPLAYBUG_OUTBOX_BATCH_SIZE"],
     outboxPollMs: env["REPLAYBUG_OUTBOX_POLL_MS"],
     outboxReconcileMs: env["REPLAYBUG_OUTBOX_RECONCILE_MS"],
+    reproductionOutboxBatchSize:
+      env["REPLAYBUG_REPRODUCTION_OUTBOX_BATCH_SIZE"],
+    reproductionOutboxPollMs: env["REPLAYBUG_REPRODUCTION_OUTBOX_POLL_MS"],
+    reproductionOutboxReconcileMs:
+      env["REPLAYBUG_REPRODUCTION_OUTBOX_RECONCILE_MS"],
     jobRetryLimit: env["REPLAYBUG_JOB_RETRY_LIMIT"],
     jobPollMs: env["REPLAYBUG_JOB_POLL_MS"],
   });

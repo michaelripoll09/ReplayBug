@@ -63,6 +63,12 @@ export const queryKeys = {
     ["issues", issueId, "comments", serializeParams(params)] as const,
   activity: (issueId: string, params: PageParams) =>
     ["issues", issueId, "activity", serializeParams(params)] as const,
+  // Playwright reproductions. List summaries stay small (no code); the
+  // detail key carries one generation record including its code.
+  issueReproductions: (issueId: string, params: PageParams) =>
+    ["issues", issueId, "reproductions", serializeParams(params)] as const,
+  reproduction: (reproductionId: string) =>
+    ["reproductions", reproductionId] as const,
   tags: (projectId: string) => ["projects", projectId, "tags"] as const,
   workspaceMembers: (workspaceId: string) =>
     ["workspaces", workspaceId, "members"] as const,
@@ -355,6 +361,34 @@ export function activityQuery(issueId: string, params: PageParams) {
   });
 }
 
+export function issueReproductionsQuery(issueId: string, params: PageParams) {
+  return queryOptions({
+    queryKey: queryKeys.issueReproductions(issueId, params),
+    queryFn: () =>
+      fetchGet(() =>
+        api.client.GET("/api/v1/issues/{issueId}/reproductions", {
+          params: { path: { issueId }, query: toPageQuery(params) },
+        }),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function reproductionQuery(reproductionId: string) {
+  return queryOptions({
+    queryKey: queryKeys.reproduction(reproductionId),
+    queryFn: () =>
+      fetchGet(() =>
+        api.client.GET("/api/v1/reproductions/{reproductionId}", {
+          params: { path: { reproductionId } },
+        }),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
 export function tagsQuery(projectId: string) {
   return queryOptions({
     queryKey: queryKeys.tags(projectId),
@@ -624,6 +658,8 @@ export function useInvalidateDomain(): {
   invalidateProjectMetrics: (projectId: string) => Promise<void>;
   invalidateIssues: (projectId: string) => Promise<void>;
   invalidateIssue: (issueId: string) => Promise<void>;
+  invalidateIssueReproductions: (issueId: string) => Promise<void>;
+  invalidateReproduction: (reproductionId: string) => Promise<void>;
   invalidateSessions: (projectId: string) => Promise<void>;
   invalidateSession: (sessionId: string) => Promise<void>;
   invalidateTags: (projectId: string) => Promise<void>;
@@ -667,6 +703,14 @@ export function useInvalidateDomain(): {
       client.invalidateQueries({ queryKey: queryKeys.issues(projectId) }),
     invalidateIssue: (issueId: string) =>
       client.invalidateQueries({ queryKey: queryKeys.issue(issueId) }),
+    invalidateIssueReproductions: (issueId: string) =>
+      client.invalidateQueries({
+        queryKey: ["issues", issueId, "reproductions"],
+      }),
+    invalidateReproduction: (reproductionId: string) =>
+      client.invalidateQueries({
+        queryKey: queryKeys.reproduction(reproductionId),
+      }),
     invalidateSessions: (projectId: string) =>
       client.invalidateQueries({ queryKey: queryKeys.sessions(projectId) }),
     invalidateSession: (sessionId: string) =>

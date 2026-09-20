@@ -12,7 +12,7 @@ import {
   validateStorageKey,
   type ArtifactType,
 } from "../releases.js";
-import type { DbOrTx } from "./db-types.js";
+import type { DbOrTx, DbTransaction } from "./db-types.js";
 
 export type ReleaseRow = typeof releases.$inferSelect;
 export type ReleaseArtifactRow = typeof releaseArtifacts.$inferSelect;
@@ -155,6 +155,42 @@ export async function listReleasesByProject(
     .from(releases)
     .where(eq(releases.projectId, projectId))
     .orderBy(asc(releases.createdAt), asc(releases.version), asc(releases.id));
+}
+
+/** Lock all releases for the supplied projects in deterministic order. */
+export async function lockReleasesByProjects(
+  tx: DbTransaction,
+  projectIds: readonly string[],
+): Promise<ReleaseRow[]> {
+  if (projectIds.length === 0) {
+    return [];
+  }
+  return tx
+    .select()
+    .from(releases)
+    .where(inArray(releases.projectId, [...projectIds]))
+    .orderBy(asc(releases.projectId), asc(releases.id))
+    .for("update");
+}
+
+/** Lock all artifacts for the supplied releases in deterministic order. */
+export async function lockArtifactsByReleases(
+  tx: DbTransaction,
+  releaseIds: readonly string[],
+): Promise<ReleaseArtifactRow[]> {
+  if (releaseIds.length === 0) {
+    return [];
+  }
+  return tx
+    .select()
+    .from(releaseArtifacts)
+    .where(inArray(releaseArtifacts.releaseId, [...releaseIds]))
+    .orderBy(
+      asc(releaseArtifacts.releaseId),
+      asc(releaseArtifacts.artifactPath),
+      asc(releaseArtifacts.id),
+    )
+    .for("update");
 }
 
 export interface InsertReleaseArtifactInput {

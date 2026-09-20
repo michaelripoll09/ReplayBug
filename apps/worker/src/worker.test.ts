@@ -13,6 +13,9 @@ import {
 } from "./queues/reproduction.js";
 import { listRegisteredJobContracts } from "./queues/index.js";
 import { sanitizeOutboxError } from "./dispatcher/publish-batch.js";
+import { startExpiredInvitationCleanupRunner } from "./cleanup/invitations.js";
+import { startRetentionCleanupRunner } from "./cleanup/retention.js";
+import { createTestDbClient, createTestLogger } from "./test-helpers.js";
 
 const BASE_ENV = {
   REPLAYBUG_DATABASE_URL: "postgres://localhost:5432/replaybug",
@@ -27,11 +30,17 @@ describe("loadWorkerConfigFromEnv", () => {
     expect(config.outboxBatchSize).toBe(100);
     expect(config.outboxPollMs).toBe(1000);
     expect(config.outboxReconcileMs).toBe(60_000);
+    expect(config.artifactDeletionBatchSize).toBe(100);
+    expect(config.artifactDeletionPollMs).toBe(1000);
     expect(config.reproductionOutboxBatchSize).toBe(100);
     expect(config.reproductionOutboxPollMs).toBe(1000);
     expect(config.reproductionOutboxReconcileMs).toBe(60_000);
     expect(config.jobRetryLimit).toBe(4);
     expect(config.jobPollMs).toBe(500);
+    expect(config.invitationCleanupBatchSize).toBe(100);
+    expect(config.invitationCleanupIntervalMs).toBe(60_000);
+    expect(config.retentionCleanupBatchSize).toBe(100);
+    expect(config.retentionCleanupIntervalMs).toBe(60_000);
   });
 
   it("fails fast with a readable message when the database URL is missing", () => {
@@ -47,15 +56,27 @@ describe("loadWorkerConfigFromEnv", () => {
       REPLAYBUG_OUTBOX_BATCH_SIZE: "25",
       REPLAYBUG_OUTBOX_POLL_MS: "250",
       REPLAYBUG_OUTBOX_RECONCILE_MS: "5000",
+      REPLAYBUG_ARTIFACT_DELETION_BATCH_SIZE: "25",
+      REPLAYBUG_ARTIFACT_DELETION_POLL_MS: "250",
       REPLAYBUG_JOB_RETRY_LIMIT: "2",
       REPLAYBUG_JOB_POLL_MS: "1000",
+      REPLAYBUG_INVITATION_CLEANUP_BATCH_SIZE: "25",
+      REPLAYBUG_INVITATION_CLEANUP_INTERVAL_MS: "5000",
+      REPLAYBUG_RETENTION_CLEANUP_BATCH_SIZE: "25",
+      REPLAYBUG_RETENTION_CLEANUP_INTERVAL_MS: "5000",
     });
     expect(config.concurrency).toBe(5);
     expect(config.outboxBatchSize).toBe(25);
     expect(config.outboxPollMs).toBe(250);
     expect(config.outboxReconcileMs).toBe(5000);
+    expect(config.artifactDeletionBatchSize).toBe(25);
+    expect(config.artifactDeletionPollMs).toBe(250);
     expect(config.jobRetryLimit).toBe(2);
     expect(config.jobPollMs).toBe(1000);
+    expect(config.invitationCleanupBatchSize).toBe(25);
+    expect(config.invitationCleanupIntervalMs).toBe(5000);
+    expect(config.retentionCleanupBatchSize).toBe(25);
+    expect(config.retentionCleanupIntervalMs).toBe(5000);
   });
 
   it("rejects out-of-bounds values instead of clamping silently", () => {
@@ -74,9 +95,69 @@ describe("loadWorkerConfigFromEnv", () => {
     expect(() =>
       loadWorkerConfigFromEnv({
         ...BASE_ENV,
+        REPLAYBUG_ARTIFACT_DELETION_BATCH_SIZE: "0",
+      }),
+    ).toThrow(/artifactDeletionBatchSize/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_ARTIFACT_DELETION_POLL_MS: "99",
+      }),
+    ).toThrow(/artifactDeletionPollMs/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
         REPLAYBUG_JOB_POLL_MS: "100",
       }),
     ).toThrow(/jobPollMs/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_INVITATION_CLEANUP_BATCH_SIZE: "0",
+      }),
+    ).toThrow(/invitationCleanupBatchSize/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_INVITATION_CLEANUP_BATCH_SIZE: "101",
+      }),
+    ).toThrow(/invitationCleanupBatchSize/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_INVITATION_CLEANUP_INTERVAL_MS: "999",
+      }),
+    ).toThrow(/invitationCleanupIntervalMs/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_INVITATION_CLEANUP_INTERVAL_MS: "3600001",
+      }),
+    ).toThrow(/invitationCleanupIntervalMs/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_RETENTION_CLEANUP_BATCH_SIZE: "0",
+      }),
+    ).toThrow(/retentionCleanupBatchSize/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_RETENTION_CLEANUP_BATCH_SIZE: "1001",
+      }),
+    ).toThrow(/retentionCleanupBatchSize/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_RETENTION_CLEANUP_INTERVAL_MS: "999",
+      }),
+    ).toThrow(/retentionCleanupIntervalMs/);
+    expect(() =>
+      loadWorkerConfigFromEnv({
+        ...BASE_ENV,
+        REPLAYBUG_RETENTION_CLEANUP_INTERVAL_MS: "3600001",
+      }),
+    ).toThrow(/retentionCleanupIntervalMs/);
   });
 
   it("rejects non-numeric values", () => {
@@ -87,6 +168,37 @@ describe("loadWorkerConfigFromEnv", () => {
       }),
     ).toThrow(/concurrency/);
   });
+});
+
+describe("cleanup runner shutdown", () => {
+  it("drains rejected in-flight passes without rejecting stop", async () => {
+    const client = createTestDbClient();
+    try {
+      const retentionRunner = startRetentionCleanupRunner({
+        db: client.db,
+        batchSize: 0,
+        intervalMs: 60_000,
+        logger: createTestLogger(),
+      });
+      const retentionPass = retentionRunner.runOnce();
+      await expect(retentionRunner.stop()).resolves.toBeUndefined();
+      await expect(retentionPass).rejects.toThrow(
+        /Retention cleanup batch size/,
+      );
+
+      const invitationRunner = startExpiredInvitationCleanupRunner({
+        db: client.db,
+        batchSize: 0,
+        intervalMs: 60_000,
+        logger: createTestLogger(),
+      });
+      const invitationPass = invitationRunner.runOnce();
+      await expect(invitationRunner.stop()).resolves.toBeUndefined();
+      await expect(invitationPass).rejects.toThrow(/Query limit/);
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
 });
 
 describe("process-event job contract", () => {

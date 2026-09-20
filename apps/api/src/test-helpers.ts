@@ -53,14 +53,15 @@ export function createTestDbClient(): DbClient {
 export async function resetTestDatabase(client: DbClient): Promise<void> {
   await client.pool.query(`
     TRUNCATE "user", "session", "account", "verification",
-      "audit_logs", "event_processing_outbox", "events", "rate_limit_buckets",
+      "audit_logs", "event_processing_outbox", "artifact_deletion_outbox",
+      "events", "rate_limit_buckets",
       "telemetry_sessions", "project_keys", "project_origins",
       "project_environments", "projects",
       "issue_comments", "issue_tag_assignments", "issue_tags",
       "issue_activity", "issue_affected_sessions", "issues", "notifications",
       "release_artifacts", "releases",
       "reproduction_generation_outbox", "reproduction_tests",
-      "workspace_memberships", "workspaces"
+      "workspace_invitations", "workspace_memberships", "workspaces"
     RESTART IDENTITY CASCADE
   `);
 }

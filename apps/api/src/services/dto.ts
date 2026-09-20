@@ -1,4 +1,7 @@
-import { eventSymbolicationSchema } from "@replaybug/contracts";
+import {
+  eventSymbolicationSchema,
+  workspaceAuditActionSchema,
+} from "@replaybug/contracts";
 import type {
   EventDetail,
   EventDiagnostic,
@@ -20,9 +23,14 @@ import type {
   Workspace,
   WorkspaceWithRole,
   WorkspaceRole,
+  WorkspaceMember,
+  WorkspaceInvitation,
+  WorkspaceAuditEvent,
+  WorkspaceInvitationStatus,
 } from "@replaybug/contracts";
+import { AuditRepo } from "@replaybug/db";
 import type {
-  AuditRepo,
+  InvitationRepo,
   EnvironmentRepo,
   IssueActivityRepo,
   IssueCommentRepo,
@@ -59,6 +67,57 @@ export function toWorkspaceWithRoleDto(
   role: WorkspaceRole,
 ): WorkspaceWithRole {
   return { ...toWorkspaceDto(row), role };
+}
+
+export function getWorkspaceInvitationStatus(
+  row: Pick<
+    InvitationRepo.InvitationRow,
+    "expiresAt" | "acceptedAt" | "revokedAt"
+  >,
+  now = new Date(),
+): WorkspaceInvitationStatus {
+  if (row.acceptedAt !== null) {
+    return "accepted";
+  }
+  // An explicit revoke remains revoked after the original expiry. Automatic
+  // retirement records revoked_at at or after expiry, so it remains visibly
+  // expired while still releasing the partial pending-email index.
+  if (
+    row.revokedAt !== null &&
+    row.revokedAt.getTime() < row.expiresAt.getTime()
+  ) {
+    return "revoked";
+  }
+  if (row.expiresAt.getTime() <= now.getTime()) {
+    return "expired";
+  }
+  if (row.revokedAt !== null) {
+    return "revoked";
+  }
+  return "pending";
+}
+
+export function toWorkspaceInvitationDto(
+  row: InvitationRepo.InvitationMetadataRow,
+  now = new Date(),
+): WorkspaceInvitation {
+  const role = row.role;
+  if (role !== "admin" && role !== "member" && role !== "viewer") {
+    throw new Error("Invalid persisted invitation role");
+  }
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    email: row.email,
+    role,
+    tokenPrefix: row.tokenPrefix,
+    status: getWorkspaceInvitationStatus(row, now),
+    expiresAt: iso(row.expiresAt),
+    acceptedAt: row.acceptedAt === null ? null : iso(row.acceptedAt),
+    revokedAt: row.revokedAt === null ? null : iso(row.revokedAt),
+    createdByUserId: row.createdByUserId,
+    createdAt: iso(row.createdAt),
+  };
 }
 
 export function toProjectDto(row: ProjectRepo.ProjectRow): Project {
@@ -118,6 +177,18 @@ export function toKeyMetaDto(
 export type MembershipRow = MembershipRepo.MembershipRow;
 export type AuditRow = AuditRepo.AuditRow;
 
+export function toWorkspaceMemberDto(
+  row: UserRepo.UserRow,
+  role: WorkspaceRole,
+): WorkspaceMember {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role,
+  };
+}
+
 export function toUserSummaryDto(row: UserRepo.UserRow): UserSummary {
   return {
     id: row.id,
@@ -125,6 +196,25 @@ export function toUserSummaryDto(row: UserRepo.UserRow): UserSummary {
     name: row.name,
     ...(row.image === null ? {} : { image: row.image }),
     emailVerified: row.emailVerified,
+  };
+}
+
+export function toAuditEventDto(
+  row: AuditRepo.AuditRow,
+  actor: UserRepo.UserRow | null,
+): WorkspaceAuditEvent {
+  const action = workspaceAuditActionSchema.safeParse(row.action);
+  if (!action.success) {
+    throw new Error("Invalid persisted audit action");
+  }
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    projectId: row.projectId,
+    action: action.data,
+    actor: actor === null ? null : toUserSummaryDto(actor),
+    metadata: AuditRepo.sanitizeAuditMetadata(row.metadataJson),
+    createdAt: iso(row.createdAt),
   };
 }
 

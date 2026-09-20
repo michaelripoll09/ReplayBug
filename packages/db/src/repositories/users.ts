@@ -1,8 +1,35 @@
-import { inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { users } from "../schema.js";
-import type { DbOrTx } from "./db-types.js";
+import type { DbOrTx, DbTransaction } from "./db-types.js";
 
 export type UserRow = typeof users.$inferSelect;
+
+/** Find the auth identity by a service-normalized email address. */
+export async function findUserByEmail(
+  db: DbOrTx,
+  normalizedEmail: string,
+): Promise<UserRow | undefined> {
+  const rows = await db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.email}) = ${normalizedEmail}`)
+    .limit(1);
+  return rows[0];
+}
+
+/** Lock an auth identity while checking membership acceptance. */
+export async function lockUserById(
+  tx: DbTransaction,
+  userId: string,
+): Promise<UserRow | undefined> {
+  const rows = await tx
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .for("update");
+  return rows[0];
+}
 
 /**
  * Batch user lookup for DTO summaries (assignees, comment authors,

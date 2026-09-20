@@ -19,6 +19,7 @@ import {
 } from "../authz/guards.js";
 import type { WorkspaceMember, WorkspaceRole } from "@replaybug/contracts";
 import { toWorkspaceDto, toWorkspaceWithRoleDto } from "./dto.js";
+import { deleteWorkspaceWithArtifacts } from "./deletion.js";
 
 export interface CreateWorkspaceInput {
   name: string;
@@ -202,6 +203,15 @@ export async function listWorkspaceMembers(
     })
     .filter((m): m is WorkspaceMember => m !== null)
     .sort((a, b) => a.email.localeCompare(b.email));
+}
+
+export async function deleteWorkspace(
+  db: Database,
+  userId: string,
+  workspaceId: string,
+  input?: unknown,
+): Promise<{ deleted: boolean }> {
+  return deleteWorkspaceWithArtifacts(db, userId, workspaceId, input);
 }
 
 export async function updateWorkspace(

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { workspaces } from "../schema.js";
-import type { DbOrTx } from "./db-types.js";
+import type { DbOrTx, DbTransaction } from "./db-types.js";
 
 export type WorkspaceRow = typeof workspaces.$inferSelect;
 
@@ -35,6 +35,20 @@ export async function findWorkspaceById(
   return rows[0];
 }
 
+/** Lock the tenant row before any governance membership mutation. */
+export async function lockWorkspaceById(
+  tx: DbTransaction,
+  id: string,
+): Promise<WorkspaceRow | undefined> {
+  const rows = await tx
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, id))
+    .limit(1)
+    .for("update");
+  return rows[0];
+}
+
 export async function findWorkspaceBySlug(
   db: DbOrTx,
   slug: string,
@@ -45,6 +59,13 @@ export async function findWorkspaceBySlug(
     .where(eq(workspaces.slug, slug))
     .limit(1);
   return rows[0];
+}
+
+export async function deleteWorkspaceRow(
+  tx: DbTransaction,
+  id: string,
+): Promise<void> {
+  await tx.delete(workspaces).where(eq(workspaces.id, id));
 }
 
 export async function updateWorkspaceRow(

@@ -94,11 +94,17 @@ export function createTestWorkerConfig(
     outboxBatchSize: 100,
     outboxPollMs: 500,
     outboxReconcileMs: 60_000,
+    artifactDeletionBatchSize: 100,
+    artifactDeletionPollMs: 500,
     reproductionOutboxBatchSize: 100,
     reproductionOutboxPollMs: 500,
     reproductionOutboxReconcileMs: 60_000,
     jobRetryLimit: 2,
     jobPollMs: 500,
+    invitationCleanupBatchSize: 100,
+    invitationCleanupIntervalMs: 60_000,
+    retentionCleanupBatchSize: 100,
+    retentionCleanupIntervalMs: 60_000,
     ...overrides,
   };
 }

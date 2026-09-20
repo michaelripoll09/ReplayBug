@@ -1,5 +1,7 @@
+import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   createProjectRequestSchema,
+  deleteProjectRequestSchema,
   updateProjectRequestSchema,
 } from "@replaybug/contracts";
 import type { Database } from "@replaybug/db";
@@ -73,6 +75,22 @@ const projectWithBootstrapJson = {
     project: projectJson,
     bootstrap: bootstrapJson,
   },
+} as const;
+
+const deletionRequestJson = {
+  type: "object",
+  required: ["confirmation"],
+  properties: {
+    confirmation: { type: "string", minLength: 1, maxLength: 100 },
+  },
+  propertyNames: { pattern: "^confirmation$" },
+} as const;
+
+const deletionResponseJson = {
+  type: "object",
+  required: ["deleted"],
+  properties: { deleted: { type: "boolean" } },
+  additionalProperties: false,
 } as const;
 
 const errorJson = {
@@ -284,12 +302,23 @@ export async function registerProjectRoutes(
           required: ["id"],
           properties: { id: { type: "string", format: "uuid" } },
         },
+        body: deletionRequestJson,
+        preValidation: async (request: FastifyRequest, reply: FastifyReply) => {
+          if (!deleteProjectRequestSchema.safeParse(request.body).success) {
+            await reply.status(400).send({
+              code: "VALIDATION_ERROR",
+              message: "Request validation failed",
+              requestId: request.id,
+            });
+          }
+        },
         response: {
-          200: {
-            type: "object",
-            required: ["deleted"],
-            properties: { deleted: { type: "boolean" } },
-          },
+          200: deletionResponseJson,
+          400: errorJson,
+          401: errorJson,
+          403: errorJson,
+          404: errorJson,
+          409: errorJson,
         },
       },
     },
@@ -300,7 +329,8 @@ export async function registerProjectRoutes(
           throw authRequired();
         }
         const params = request.params as { id: string };
-        const result = await deleteProject(deps.db, user.id, params.id);
+        const input = deleteProjectRequestSchema.parse(request.body);
+        const result = await deleteProject(deps.db, user.id, params.id, input);
         await reply.send(result);
       } catch (error) {
         await sendDomainError(request, reply, error);

@@ -6,8 +6,8 @@ model inference, no remote browsing, and no server-side test execution.
 The server writes code as text; the developer runs it locally.
 
 Issue workflow, session timelines, SSE, releases and source maps are prior
-blocks; retention cleanup, invitation cleanup, Ollama analysis and public
-demo mode are explicitly out of scope.
+blocks. Retention and invitation cleanup are now operational concerns; Ollama
+analysis and public demo mode remain out of scope.
 
 ## Pipeline
 
@@ -274,9 +274,11 @@ marks ready (`code`, `hasRedactedSteps`, activity row,
 in-app `reproduction_failed` notification to the requester).
 Deterministic problems (`ReproductionError`, syntax invalid) mark
 failed and return; only unexpected errors throw for pg-boss retry.
-`event_id = NULL` (retention expiry) is a deterministic
-`REPRODUCTION_INVALID_EVIDENCE` failure. Logs carry ids/duration/
-status only — never code, payloads or secrets.
+Retention protects events referenced by pending reproductions. Once a
+reproduction is terminal, later raw-evidence expiry can set `event_id = NULL`;
+the reproduction history remains, while a worker that encounters missing
+required evidence treats it as deterministic `REPRODUCTION_INVALID_EVIDENCE`.
+Logs carry ids/duration/status only — never code, payloads or secrets.
 
 Storage: `reproduction_tests` (`status pending|ready|failed`,
 `language typescript`, `framework playwright`, nullable `code`,

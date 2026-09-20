@@ -26,6 +26,7 @@ import {
   requireWorkspaceMembership,
 } from "../authz/guards.js";
 import { toEnvironmentDto, toProjectDto } from "./dto.js";
+import { deleteProjectWithArtifacts } from "./deletion.js";
 
 const RETENTION_MIN = 7;
 const RETENTION_MAX = 365;
@@ -315,57 +316,14 @@ export async function updateProject(
   }
 }
 
-/** Transactional idempotent delete: deleting twice returns success. */
+/** Transactional, confirmation-gated delete with durable artifact cleanup. */
 export async function deleteProject(
   db: Database,
   userId: string,
   projectId: string,
+  input?: unknown,
 ): Promise<{ deleted: boolean }> {
-  const existing = await ProjectRepo.findProjectById(db, projectId);
-  if (existing === undefined) {
-    return { deleted: false };
-  }
-  const membership = await MembershipRepo.findMembership(
-    db,
-    existing.workspaceId,
-    userId,
-  );
-  requireProjectAccess(
-    membership === undefined
-      ? undefined
-      : {
-          workspaceId: membership.workspaceId,
-          userId: membership.userId,
-          role: membership.role as WorkspaceRole,
-        },
-    { id: existing.id, workspaceId: existing.workspaceId },
-  );
-  const checked = requireWorkspaceMembership(
-    membership === undefined
-      ? undefined
-      : {
-          workspaceId: membership.workspaceId,
-          userId: membership.userId,
-          role: membership.role as WorkspaceRole,
-        },
-  );
-  requireWorkspaceCapability(checked, "project:delete");
-
-  await db.transaction(async (tx: DbTransaction) => {
-    await AuditRepo.insertAuditLog(tx, {
-      workspaceId: existing.workspaceId,
-      projectId: null,
-      actorUserId: userId,
-      action: "project.deleted",
-      metadataJson: {
-        projectId: existing.id,
-        slug: existing.slug,
-        name: existing.name,
-      },
-    });
-    await ProjectRepo.deleteProjectRow(tx, projectId);
-  });
-  return { deleted: true };
+  return deleteProjectWithArtifacts(db, userId, projectId, input);
 }
 
 export async function createEnvironment(

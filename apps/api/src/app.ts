@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { LogController } from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
@@ -25,6 +25,8 @@ import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAuthRoutes } from "./routes/auth-handler.js";
 import { registerMeRoutes } from "./routes/me.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
+import { registerInvitationRoutes } from "./routes/invitations.js";
+import { registerWorkspaceGovernanceRoutes } from "./routes/workspace-governance.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerOriginRoutes } from "./routes/origins.js";
@@ -58,7 +60,12 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   const { config } = options;
   const logger = createLogger({ service: "api", level: config.logLevel });
 
-  const app: AppInstance = Fastify({ loggerInstance: logger });
+  const app: AppInstance = Fastify({
+    loggerInstance: logger,
+    // Invitation credentials are carried in an accept-route path. Disable
+    // automatic request logs so the normal logger cannot emit that path.
+    logController: new LogController({ disableRequestLogging: true }),
+  });
 
   await registerRequestId(app);
   await registerErrorHandler(app);
@@ -107,6 +114,10 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
             description: "Better Auth session endpoints + current user",
           },
           { name: "Workspaces", description: "Tenant workspaces" },
+          {
+            name: "Invitations",
+            description: "Authenticated workspace invitation lifecycle",
+          },
           {
             name: "Projects",
             description: "Workspace projects + bootstrap keys",
@@ -246,6 +257,12 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   await registerAuthRoutes(app, auth);
   await registerMeRoutes(app, { auth });
   await registerWorkspaceRoutes(app, { db, auth });
+  await registerInvitationRoutes(app, {
+    db,
+    auth,
+    webUrl: config.webUrl,
+  });
+  await registerWorkspaceGovernanceRoutes(app, { db, auth });
   await registerProjectRoutes(app, { db, auth });
   await registerEnvironmentRoutes(app, { db, auth });
   await registerOriginRoutes(app, { db, auth });

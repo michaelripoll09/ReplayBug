@@ -10,7 +10,9 @@ storage is down — degradation is specified, not accidental (master spec
 
 Explicitly out of scope: fetching maps from anywhere except the upload
 pipeline (no external artifact download, no server-side source fetching),
-code snippets, auto-fixes, retention cleanup, and S3.
+code snippets, auto-fixes, S3/object storage, and external artifact services.
+Telemetry retention and local artifact deletion now exist, but they are separate
+operations described below and in [Self-hosting](../self-hosting.md).
 
 ## Release identity
 
@@ -215,6 +217,9 @@ status.
   granularity.
 - `sourcesContent` is not rendered as code context; there are no code
   snippets, auto-fixes, or external fetches by design.
-- Retention cleanup does not exist yet: blobs grow with releases until a
-  later block adds it (back up the volume; see
-  [Self-hosting](../self-hosting.md)).
+- **Retention is not artifact cleanup.** Per-project retention deletes only
+  eligible raw telemetry events and sessions; it does not delete release blobs.
+  Confirmed project/workspace deletion queues canonical artifact keys in a
+  durable outbox, then the worker deletes local files with retry/idempotence.
+  Back up the volume with PostgreSQL until a deliberate deletion is completed;
+  see [Self-hosting](../self-hosting.md).

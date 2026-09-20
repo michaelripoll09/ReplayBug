@@ -431,7 +431,101 @@ export interface paths {
     };
     put?: never;
     post?: never;
-    delete?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            confirmation: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              deleted: boolean;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
     options?: never;
     head?: never;
     patch: {
@@ -571,6 +665,977 @@ export interface paths {
         };
         /** @description Default Response */
         401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/workspaces/{workspaceId}/invitations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          workspaceId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              /** Format: uuid */
+              workspaceId: string;
+              /** Format: email */
+              email: string;
+              /** @enum {string} */
+              role: "admin" | "member" | "viewer";
+              tokenPrefix: string;
+              /** @enum {string} */
+              status: "pending" | "expired" | "accepted" | "revoked";
+              /** Format: date-time */
+              expiresAt: string;
+              /** Format: date-time */
+              acceptedAt: null | string;
+              /** Format: date-time */
+              revokedAt: null | string;
+              createdByUserId: string;
+              /** Format: date-time */
+              createdAt: string;
+            }[];
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          workspaceId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            email: string;
+            /** @enum {string} */
+            role: "admin" | "member" | "viewer";
+          };
+        };
+      };
+      responses: {
+        /** @description Default Response */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              /** Format: uuid */
+              workspaceId: string;
+              /** Format: email */
+              email: string;
+              /** @enum {string} */
+              role: "admin" | "member" | "viewer";
+              tokenPrefix: string;
+              /** @enum {string} */
+              status: "pending" | "expired" | "accepted" | "revoked";
+              /** Format: date-time */
+              expiresAt: string;
+              /** Format: date-time */
+              acceptedAt: null | string;
+              /** Format: date-time */
+              revokedAt: null | string;
+              createdByUserId: string;
+              /** Format: date-time */
+              createdAt: string;
+              token: string;
+              /** Format: uri */
+              inviteUrl: string;
+              deliveryNote: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/workspaces/{workspaceId}/invitations/{invitationId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          workspaceId: string;
+          invitationId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              id: string;
+              /** Format: uuid */
+              workspaceId: string;
+              /** Format: email */
+              email: string;
+              /** @enum {string} */
+              role: "admin" | "member" | "viewer";
+              tokenPrefix: string;
+              /** @enum {string} */
+              status: "pending" | "expired" | "accepted" | "revoked";
+              /** Format: date-time */
+              expiresAt: string;
+              /** Format: date-time */
+              acceptedAt: null | string;
+              /** Format: date-time */
+              revokedAt: null | string;
+              createdByUserId: string;
+              /** Format: date-time */
+              createdAt: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/invitations/{token}/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          token: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              invitationId: string;
+              /** Format: uuid */
+              workspaceId: string;
+              /** Format: uuid */
+              membershipId: string;
+              /** @enum {string} */
+              role: "admin" | "member" | "viewer";
+              /** Format: date-time */
+              acceptedAt: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/workspaces/{workspaceId}/members/{userId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          workspaceId: string;
+          userId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {boolean} */
+              removed: true;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          workspaceId: string;
+          userId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            /** @enum {string} */
+            role: "admin" | "member" | "viewer";
+          };
+        };
+      };
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              id: string;
+              name: string;
+              /** Format: email */
+              email: string;
+              /** @enum {string} */
+              role: "owner" | "admin" | "member" | "viewer";
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/workspaces/{workspaceId}/leave": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          workspaceId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @enum {boolean} */
+              left: true;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/workspaces/{workspaceId}/ownership-transfer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          workspaceId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            userId: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** Format: uuid */
+              workspaceId: string;
+              previousOwnerId: string;
+              newOwnerId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/workspaces/{workspaceId}/audit": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          limit?: string;
+          cursor?: string;
+          action?:
+            | "workspace.created"
+            | "workspace.updated"
+            | "workspace.ownership_transferred"
+            | "workspace.deletion_requested"
+            | "workspace.deletion_completed"
+            | "project.created"
+            | "project.updated"
+            | "project.deleted"
+            | "project.retention_changed"
+            | "project.deletion_requested"
+            | "project.deletion_completed"
+            | "workspace_invitation.created"
+            | "workspace_invitation.revoked"
+            | "workspace_invitation.accepted"
+            | "workspace_member.role_changed"
+            | "workspace_member.removed"
+            | "project_origin.created"
+            | "project_origin.updated"
+            | "project_origin.deleted"
+            | "project_key.rotated";
+        };
+        header?: never;
+        path: {
+          workspaceId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              items: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                workspaceId: string;
+                /** Format: uuid */
+                projectId: null | string;
+                /** @enum {string} */
+                action:
+                  | "workspace.created"
+                  | "workspace.updated"
+                  | "workspace.ownership_transferred"
+                  | "workspace.deletion_requested"
+                  | "workspace.deletion_completed"
+                  | "project.created"
+                  | "project.updated"
+                  | "project.deleted"
+                  | "project.retention_changed"
+                  | "project.deletion_requested"
+                  | "project.deletion_completed"
+                  | "workspace_invitation.created"
+                  | "workspace_invitation.revoked"
+                  | "workspace_invitation.accepted"
+                  | "workspace_member.role_changed"
+                  | "workspace_member.removed"
+                  | "project_origin.created"
+                  | "project_origin.updated"
+                  | "project_origin.deleted"
+                  | "project_key.rotated";
+                actor: {
+                  id: string;
+                  /** Format: email */
+                  email: string;
+                  name: string;
+                  image?: string | null;
+                  emailVerified: boolean;
+                } | null;
+                metadata: {
+                  [key: string]: unknown;
+                };
+                /** Format: date-time */
+                createdAt: string;
+              }[];
+              nextCursor?: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
           headers: {
             [name: string]: unknown;
           };
@@ -844,7 +1909,13 @@ export interface paths {
         };
         cookie?: never;
       };
-      requestBody?: never;
+      requestBody: {
+        content: {
+          "application/json": {
+            confirmation: string;
+          };
+        };
+      };
       responses: {
         /** @description Default Response */
         200: {
@@ -854,6 +1925,71 @@ export interface paths {
           content: {
             "application/json": {
               deleted: boolean;
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
             };
           };
         };
@@ -2727,6 +3863,186 @@ export interface paths {
               }[];
               createdAt: string;
               updatedAt: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+        /** @description Default Response */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/issues/{issueId}/export": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          eventId?: string;
+        };
+        header?: never;
+        path: {
+          issueId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Default Response */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              exportedAt: string;
+              issue: {
+                id: string;
+                projectId: string;
+                type: string;
+                title: string;
+                normalizedMessage: string;
+                status: string;
+                severity: string;
+                firstSeenAt: string;
+                lastSeenAt: string;
+                resolvedAt: null | string;
+                firstRelease: null | string;
+                lastRelease: null | string;
+                occurrenceCount: number;
+                affectedSessionCount: number;
+                tags: {
+                  id: string;
+                  name: string;
+                  slug: string;
+                }[];
+                createdAt: string;
+                updatedAt: string;
+              };
+              occurrence: {
+                eventId: string;
+                sessionId: string;
+                occurredAt: string;
+                receivedAt: string;
+                environment: string;
+                release: null | string;
+                pageUrl: null | string;
+                eventType: string;
+                processingState: string;
+              } | null;
+              stack: {
+                symbolicationStatus: string | null;
+                rawFrames: {
+                  filename?: string;
+                  function?: string;
+                  lineno?: number;
+                  colno?: number;
+                  inApp?: boolean;
+                  source?: string;
+                  name?: null | string;
+                  line?: number;
+                  column?: number;
+                  inApplication?: boolean;
+                  mapped?: boolean;
+                }[];
+                mappedFrames:
+                  | {
+                      filename: string;
+                      source: string;
+                      function: string;
+                      name: null | string;
+                      line: number;
+                      column: number;
+                      inApplication: boolean;
+                      mapped: boolean;
+                    }[]
+                  | null;
+                preferredStack: {
+                  filename?: string;
+                  function?: string;
+                  lineno?: number;
+                  colno?: number;
+                  inApp?: boolean;
+                  source?: string;
+                  name?: string | null;
+                  line?: number;
+                  column?: number;
+                  inApplication?: boolean;
+                  mapped?: boolean;
+                }[];
+              } | null;
+              timeline: {
+                id: string;
+                sequenceNumber: number;
+                eventType: string;
+                occurredAt: string;
+                receivedAt: string;
+                environment: string;
+                release: null | string;
+                pageUrl: null | string;
+                processingState: string;
+                summary: string;
+              }[];
+              reproductions: {
+                id: string;
+                eventId: null | string;
+                /** @enum {string} */
+                status: "pending" | "ready" | "failed";
+                language: string;
+                framework: string;
+                hasRedactedSteps: boolean;
+                generatorVersion: string;
+                errorCode: null | string;
+                completedAt: null | string;
+                createdAt: string;
+              }[];
+            };
+          };
+        };
+        /** @description Default Response */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              code: string;
+              message: string;
+              requestId: string;
             };
           };
         };

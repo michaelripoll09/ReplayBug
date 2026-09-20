@@ -1,7 +1,17 @@
 "use client";
 
 import { queryOptions, useQueryClient } from "@tanstack/react-query";
+import type { Client } from "openapi-fetch";
+import type { paths as GeneratedApiPaths } from "../../../packages/api-client/src/schema";
 import { api } from "./api";
+
+/**
+ * The workspace governance schema is generated in the workspace package. The
+ * browser singleton remains the runtime transport; this typed view keeps the
+ * web source aligned before a package build refreshes its declaration output.
+ */
+export const workspaceGovernanceClient =
+  api.client as unknown as Client<GeneratedApiPaths>;
 
 /**
  * TanStack Query factories. Targeted invalidation only: callers invalidate
@@ -11,6 +21,32 @@ import { api } from "./api";
  * Query keys are stable tuples so server-prefetched state and client
  * refetches share identity.
  */
+
+type WorkspaceResponse =
+  GeneratedApiPaths["/api/v1/workspaces/{id}"]["get"]["responses"][200]["content"]["application/json"];
+type WorkspaceMemberListResponse =
+  GeneratedApiPaths["/api/v1/workspaces/{id}/members"]["get"]["responses"][200]["content"]["application/json"];
+type WorkspaceInvitationListResponse =
+  GeneratedApiPaths["/api/v1/workspaces/{workspaceId}/invitations"]["get"]["responses"][200]["content"]["application/json"];
+type WorkspaceInvitationCreationResponse =
+  GeneratedApiPaths["/api/v1/workspaces/{workspaceId}/invitations"]["post"]["responses"][201]["content"]["application/json"];
+type WorkspaceMemberRoleRequest =
+  GeneratedApiPaths["/api/v1/workspaces/{workspaceId}/members/{userId}"]["patch"]["requestBody"]["content"]["application/json"];
+type WorkspaceAuditQueryParameters = NonNullable<
+  GeneratedApiPaths["/api/v1/workspaces/{workspaceId}/audit"]["get"]["parameters"]["query"]
+>;
+type WorkspaceAuditPageResponse =
+  GeneratedApiPaths["/api/v1/workspaces/{workspaceId}/audit"]["get"]["responses"][200]["content"]["application/json"];
+
+export type Workspace = WorkspaceResponse;
+export type WorkspaceMember = WorkspaceMemberListResponse[number];
+export type WorkspaceInvitation = WorkspaceInvitationListResponse[number];
+export type WorkspaceInvitationCreation = WorkspaceInvitationCreationResponse;
+export type WorkspaceMemberRole = WorkspaceMemberRoleRequest["role"];
+export type WorkspaceAuditAction = NonNullable<
+  WorkspaceAuditQueryParameters["action"]
+>;
+export type WorkspaceAuditEvent = WorkspaceAuditPageResponse["items"][number];
 
 export const queryKeys = {
   me: ["me"] as const,
@@ -72,6 +108,18 @@ export const queryKeys = {
   tags: (projectId: string) => ["projects", projectId, "tags"] as const,
   workspaceMembers: (workspaceId: string) =>
     ["workspaces", workspaceId, "members"] as const,
+  workspaceInvitations: (workspaceId: string) =>
+    ["workspaces", workspaceId, "invitations"] as const,
+  workspaceAudit: (workspaceId: string) =>
+    ["workspaces", workspaceId, "audit"] as const,
+  workspaceAuditPage: (workspaceId: string, params: WorkspaceAuditParams) =>
+    [
+      "workspaces",
+      workspaceId,
+      "audit",
+      "page",
+      serializeParams(params),
+    ] as const,
   notifications: (params: NotificationsParams) =>
     ["notifications", serializeParams(params)] as const,
   unreadCount: ["notifications", "unread-count"] as const,
@@ -132,6 +180,22 @@ export interface TimelineParams {
 
 export interface NotificationsParams extends PageParams {
   unreadOnly?: boolean;
+}
+
+export interface WorkspaceAuditParams {
+  limit?: number;
+  cursor?: string;
+  action?: WorkspaceAuditAction;
+}
+
+function normalizeWorkspaceAuditParams(
+  params: WorkspaceAuditParams,
+): WorkspaceAuditParams & { limit: number } {
+  const requested = params.limit ?? 50;
+  const limit = Number.isFinite(requested)
+    ? Math.min(100, Math.max(1, Math.trunc(requested)))
+    : 50;
+  return { ...params, limit };
 }
 
 export function toIssuesQuery(params: IssuesParams): Record<string, string> {
@@ -417,6 +481,60 @@ export function workspaceMembersQuery(workspaceId: string) {
   });
 }
 
+export function workspaceInvitationsQuery(workspaceId: string) {
+  return queryOptions({
+    queryKey: queryKeys.workspaceInvitations(workspaceId),
+    queryFn: () =>
+      fetchGet(() =>
+        workspaceGovernanceClient.GET(
+          "/api/v1/workspaces/{workspaceId}/invitations",
+          {
+            params: { path: { workspaceId } },
+          },
+        ),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function workspaceAuditQuery(
+  workspaceId: string,
+  params: WorkspaceAuditParams = {},
+) {
+  const normalized = normalizeWorkspaceAuditParams(params);
+  return queryOptions({
+    queryKey: queryKeys.workspaceAuditPage(workspaceId, normalized),
+    queryFn: () =>
+      fetchGet(() =>
+        workspaceGovernanceClient.GET(
+          "/api/v1/workspaces/{workspaceId}/audit",
+          {
+            params: {
+              path: { workspaceId },
+              query: toWorkspaceAuditQuery(normalized),
+            },
+          },
+        ),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function toWorkspaceAuditQuery(
+  params: WorkspaceAuditParams,
+): Record<string, string> {
+  const normalized = normalizeWorkspaceAuditParams(params);
+  return {
+    limit: String(normalized.limit),
+    ...(normalized.cursor !== undefined && normalized.cursor.length > 0
+      ? { cursor: normalized.cursor }
+      : {}),
+    ...(normalized.action !== undefined ? { action: normalized.action } : {}),
+  };
+}
+
 export function notificationsQuery(params: NotificationsParams) {
   return queryOptions({
     queryKey: queryKeys.notifications(params),
@@ -664,6 +782,9 @@ export function useInvalidateDomain(): {
   invalidateSession: (sessionId: string) => Promise<void>;
   invalidateTags: (projectId: string) => Promise<void>;
   invalidateWorkspaceMembers: (workspaceId: string) => Promise<void>;
+  invalidateWorkspaceInvitations: (workspaceId: string) => Promise<void>;
+  invalidateWorkspaceAudit: (workspaceId: string) => Promise<void>;
+  removeWorkspaceSensitive: (workspaceId: string) => void;
   invalidateNotifications: () => Promise<void>;
   clearSensitiveCache: () => void;
 } {
@@ -721,6 +842,26 @@ export function useInvalidateDomain(): {
       client.invalidateQueries({
         queryKey: queryKeys.workspaceMembers(workspaceId),
       }),
+    invalidateWorkspaceInvitations: (workspaceId: string) =>
+      client.invalidateQueries({
+        queryKey: queryKeys.workspaceInvitations(workspaceId),
+      }),
+    invalidateWorkspaceAudit: (workspaceId: string) =>
+      client.invalidateQueries({
+        queryKey: queryKeys.workspaceAudit(workspaceId),
+      }),
+    removeWorkspaceSensitive: (workspaceId: string) => {
+      client.removeQueries({ queryKey: queryKeys.workspace(workspaceId) });
+      client.removeQueries({ queryKey: queryKeys.projects(workspaceId) });
+      client.removeQueries({
+        queryKey: queryKeys.workspaceMembers(workspaceId),
+      });
+      client.removeQueries({
+        queryKey: queryKeys.workspaceInvitations(workspaceId),
+      });
+      client.removeQueries({ queryKey: queryKeys.workspaceAudit(workspaceId) });
+      client.removeQueries({ queryKey: queryKeys.workspaces });
+    },
     invalidateNotifications: () =>
       client.invalidateQueries({ queryKey: ["notifications"] }),
     clearSensitiveCache: () => {

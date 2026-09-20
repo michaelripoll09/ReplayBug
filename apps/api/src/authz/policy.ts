@@ -6,10 +6,9 @@ import type { WorkspaceRole } from "@replaybug/contracts";
  * typed helpers below.
  *
  * Matrix (workspace-scoped):
- * - owner: everything (manage workspace, projects, envs, origins, keys)
- * - admin: manage projects, envs, origins, keys; cannot transfer ownership
- *   (ownership transfer is out of scope this block, so owner==admin except
- *   workspace deletion which is not exposed this block)
+ * - owner: everything, including governance, retention, transfer, and deletion
+ * - admin: manage projects, governance, and project settings; cannot transfer
+ *   ownership or delete the workspace
  * - member: read + inspect telemetry (read projects/envs/origins/keys meta);
  *   cannot create/update/delete projects, envs, origins or rotate keys.
  *   Secret tokens (`project:manage-secret-tokens`) are owner/admin only:
@@ -48,7 +47,13 @@ export type Capability =
   | "session:read"
   | "notification:read-own"
   | "reproduction:read"
-  | "reproduction:generate";
+  | "reproduction:generate"
+  | "workspace:manage-invitations"
+  | "workspace:manage-members"
+  | "workspace:read-audit"
+  | "workspace:transfer-ownership"
+  | "workspace:delete"
+  | "project:update-retention";
 
 const ROLE_RANK: Record<WorkspaceRole, number> = {
   viewer: 0,
@@ -56,6 +61,72 @@ const ROLE_RANK: Record<WorkspaceRole, number> = {
   admin: 2,
   owner: 3,
 };
+
+export type WorkspaceMemberRole = Exclude<WorkspaceRole, "owner">;
+
+/** Numeric hierarchy used by all workspace governance decisions. */
+export function workspaceRoleRank(role: WorkspaceRole): number {
+  return ROLE_RANK[role];
+}
+
+export function compareWorkspaceRoles(
+  left: WorkspaceRole,
+  right: WorkspaceRole,
+): number {
+  return workspaceRoleRank(left) - workspaceRoleRank(right);
+}
+
+export function isWorkspaceRoleAtLeast(
+  role: WorkspaceRole,
+  minimum: WorkspaceRole,
+): boolean {
+  return compareWorkspaceRoles(role, minimum) >= 0;
+}
+
+/**
+ * Owner may mutate every non-owner role. Admin may mutate member/viewer only.
+ * Ownership changes have a dedicated owner-only transaction and never use
+ * this generic role route.
+ */
+export function canChangeMemberRole(
+  actorRole: WorkspaceRole,
+  targetRole: WorkspaceRole,
+  nextRole: WorkspaceMemberRole,
+): boolean {
+  if (targetRole === "owner") {
+    return false;
+  }
+  if (actorRole === "owner") {
+    return true;
+  }
+  return (
+    actorRole === "admin" &&
+    (targetRole === "member" || targetRole === "viewer") &&
+    (nextRole === "member" || nextRole === "viewer")
+  );
+}
+
+/** Owner may remove any non-owner; admin may remove member/viewer only. */
+export function canRemoveMember(
+  actorRole: WorkspaceRole,
+  targetRole: WorkspaceRole,
+): boolean {
+  if (targetRole === "owner") {
+    return false;
+  }
+  if (actorRole === "owner") {
+    return true;
+  }
+  return (
+    actorRole === "admin" &&
+    (targetRole === "member" || targetRole === "viewer")
+  );
+}
+
+/** Any current workspace member may use the explicit leave route. */
+export function canLeaveWorkspace(role: WorkspaceRole): boolean {
+  return isWorkspaceRoleAtLeast(role, "viewer");
+}
 
 const CAPABILITY_MIN_ROLE: Record<Capability, WorkspaceRole> = {
   "workspace:read": "viewer",
@@ -80,6 +151,12 @@ const CAPABILITY_MIN_ROLE: Record<Capability, WorkspaceRole> = {
   "notification:read-own": "viewer",
   "reproduction:read": "viewer",
   "reproduction:generate": "member",
+  "workspace:manage-invitations": "admin",
+  "workspace:manage-members": "admin",
+  "workspace:read-audit": "admin",
+  "workspace:transfer-ownership": "owner",
+  "workspace:delete": "owner",
+  "project:update-retention": "admin",
 };
 
 export function hasCapability(
@@ -149,6 +226,35 @@ export function canGenerateReproductions(role: WorkspaceRole): boolean {
   return hasCapability(role, "reproduction:generate");
 }
 
+export function canManageInvitations(role: WorkspaceRole): boolean {
+  return hasCapability(role, "workspace:manage-invitations");
+}
+
+/** Invitation creation uses the same centralized governance capability. */
+export function canInviteMembers(role: WorkspaceRole): boolean {
+  return canManageInvitations(role);
+}
+
+export function canManageMembers(role: WorkspaceRole): boolean {
+  return hasCapability(role, "workspace:manage-members");
+}
+
+export function canReadAudit(role: WorkspaceRole): boolean {
+  return hasCapability(role, "workspace:read-audit");
+}
+
+export function canTransferOwnership(role: WorkspaceRole): boolean {
+  return hasCapability(role, "workspace:transfer-ownership");
+}
+
+export function canDeleteWorkspace(role: WorkspaceRole): boolean {
+  return hasCapability(role, "workspace:delete");
+}
+
+export function canUpdateRetention(role: WorkspaceRole): boolean {
+  return hasCapability(role, "project:update-retention");
+}
+
 /** RBAC matrix for docs/tests. */
 export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
   owner: {
@@ -174,6 +280,12 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "notification:read-own": true,
     "reproduction:read": true,
     "reproduction:generate": true,
+    "workspace:manage-invitations": true,
+    "workspace:manage-members": true,
+    "workspace:read-audit": true,
+    "workspace:transfer-ownership": true,
+    "workspace:delete": true,
+    "project:update-retention": true,
   },
   admin: {
     "workspace:read": true,
@@ -198,6 +310,12 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "notification:read-own": true,
     "reproduction:read": true,
     "reproduction:generate": true,
+    "workspace:manage-invitations": true,
+    "workspace:manage-members": true,
+    "workspace:read-audit": true,
+    "workspace:transfer-ownership": false,
+    "workspace:delete": false,
+    "project:update-retention": true,
   },
   member: {
     "workspace:read": true,
@@ -222,6 +340,12 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "notification:read-own": true,
     "reproduction:read": true,
     "reproduction:generate": true,
+    "workspace:manage-invitations": false,
+    "workspace:manage-members": false,
+    "workspace:read-audit": false,
+    "workspace:transfer-ownership": false,
+    "workspace:delete": false,
+    "project:update-retention": false,
   },
   viewer: {
     "workspace:read": true,
@@ -246,5 +370,11 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "notification:read-own": true,
     "reproduction:read": true,
     "reproduction:generate": false,
+    "workspace:manage-invitations": false,
+    "workspace:manage-members": false,
+    "workspace:read-audit": false,
+    "workspace:transfer-ownership": false,
+    "workspace:delete": false,
+    "project:update-retention": false,
   },
 };

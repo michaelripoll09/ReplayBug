@@ -50,7 +50,7 @@ export function GeneralSettings({
   const [status, setStatus] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [deleteName, setDeleteName] = React.useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = React.useState("");
   const [deleting, setDeleting] = React.useState(false);
   const editable = canManageProject(role);
 
@@ -150,7 +150,7 @@ export function GeneralSettings({
   }
 
   async function onDelete(): Promise<void> {
-    if (deleteName !== project.name) {
+    if (deleteConfirmation !== project.slug) {
       return;
     }
     setDeleting(true);
@@ -161,6 +161,7 @@ export function GeneralSettings({
         response,
       } = await api.client.DELETE("/api/v1/projects/{id}", {
         params: { path: { id: projectId } },
+        body: { confirmation: project.slug },
       });
       if (error !== undefined || result === undefined) {
         throw await api.unwrap({ data: result, error, response });
@@ -173,6 +174,7 @@ export function GeneralSettings({
         error instanceof ApiError ? toUiError(error).message : "Delete failed.",
       );
       setDeleting(false);
+      setDeleteConfirmation("");
       setDeleteOpen(false);
     }
   }
@@ -236,8 +238,18 @@ export function GeneralSettings({
             min={7}
             max={365}
             disabled={!editable}
+            aria-describedby={`${ids.retention}-help`}
             {...form.register("retentionDays", { valueAsNumber: true })}
           />
+          <p
+            id={`${ids.retention}-help`}
+            className="text-xs text-zinc-500 dark:text-zinc-400"
+          >
+            Raw telemetry and events are retained for this configured period.
+            Issue aggregates, comments/activity, reproductions, affected-session
+            lifetime counters, and audit history may remain longer according to
+            policy.
+          </p>
           <FieldError
             id={`${ids.retention}-error`}
             message={form.formState.errors.retentionDays?.message}
@@ -272,10 +284,19 @@ export function GeneralSettings({
             Danger zone
           </h2>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Deleting a project removes its environments, origins, keys and
-            telemetry metadata. This cannot be undone.
+            Deleting a project is irreversible. It removes project data and
+            schedules durable, asynchronous cleanup of associated artifacts;
+            cleanup may continue after this screen closes.
           </p>
-          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <Dialog
+            open={deleteOpen}
+            onOpenChange={(open) => {
+              setDeleteOpen(open);
+              if (!open) {
+                setDeleteConfirmation("");
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button
                 type="button"
@@ -290,18 +311,20 @@ export function GeneralSettings({
               <DialogHeader>
                 <DialogTitle>Delete “{project.name}”?</DialogTitle>
                 <DialogDescription>
-                  Type the project name to confirm. Deletion is transactional
-                  and idempotent.
+                  Type the exact, case-sensitive project slug to confirm.
+                  Deletion is irreversible; associated artifact cleanup is
+                  durable and asynchronous.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-2">
-                <Label htmlFor="delete-confirm">Project name</Label>
+                <Label htmlFor="delete-confirm">Project slug</Label>
                 <Input
                   id="delete-confirm"
-                  value={deleteName}
-                  onChange={(e) => setDeleteName(e.target.value)}
-                  placeholder={project.name}
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  placeholder={project.slug}
                   autoComplete="off"
+                  spellCheck={false}
                 />
               </div>
               <DialogFooter>
@@ -315,7 +338,7 @@ export function GeneralSettings({
                 <Button
                   type="button"
                   variant="destructive"
-                  disabled={deleting || deleteName !== project.name}
+                  disabled={deleting || deleteConfirmation !== project.slug}
                   onClick={() => void onDelete()}
                 >
                   {deleting ? "Deleting…" : "Delete project"}

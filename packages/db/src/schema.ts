@@ -137,6 +137,72 @@ export const workspaceMemberships = pgTable(
   ],
 );
 
+/**
+ * Workspace invitations are single-use, hash-only credentials. The token
+ * prefix is non-secret lookup metadata; the plaintext token never has a
+ * database column. Expired rows remain eligible for bounded cleanup and the
+ * repository also checks expiry when detecting an active duplicate.
+ */
+export const workspaceInvitations = pgTable(
+  "workspace_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    tokenPrefix: text("token_prefix").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("workspace_invitations_token_hash_unique").on(t.tokenHash),
+    uniqueIndex("workspace_invitations_pending_email_unique")
+      .on(t.workspaceId, t.email)
+      .where(sql`${t.acceptedAt} IS NULL AND ${t.revokedAt} IS NULL`),
+    index("workspace_invitations_workspace_created_idx").on(
+      t.workspaceId,
+      t.createdAt,
+    ),
+    index("workspace_invitations_token_prefix_idx").on(t.tokenPrefix),
+    index("workspace_invitations_workspace_email_status_idx").on(
+      t.workspaceId,
+      t.email,
+      t.acceptedAt,
+      t.revokedAt,
+    ),
+    check(
+      "workspace_invitations_email_check",
+      sql`char_length(${t.email}) BETWEEN 3 AND 320 AND ${t.email} = lower(btrim(${t.email})) AND ${t.email} ~ '^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$'`,
+    ),
+    check(
+      "workspace_invitations_role_check",
+      sql`${t.role} IN ('admin','member','viewer')`,
+    ),
+    check(
+      "workspace_invitations_token_hash_check",
+      sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "workspace_invitations_token_prefix_check",
+      sql`${t.tokenPrefix} ~ '^[0-9a-f]{8}$'`,
+    ),
+    check(
+      "workspace_invitations_expiry_check",
+      sql`${t.expiresAt} > ${t.createdAt}`,
+    ),
+  ],
+);
+
 export const projects = pgTable(
   "projects",
   {
@@ -268,7 +334,7 @@ export const auditLogs = pgTable(
     index("audit_logs_project_created_idx").on(t.projectId, t.createdAt),
     check(
       "audit_logs_action_check",
-      sql`${t.action} IN ('workspace.created','workspace.updated','project.created','project.updated','project.deleted','project_origin.created','project_origin.updated','project_origin.deleted','project_key.rotated')`,
+      sql`${t.action} IN ('workspace.created','workspace.updated','workspace.ownership_transferred','workspace.deletion_requested','workspace.deletion_completed','project.created','project.updated','project.deleted','project.retention_changed','project.deletion_requested','project.deletion_completed','workspace_invitation.created','workspace_invitation.revoked','workspace_invitation.accepted','workspace_member.role_changed','workspace_member.removed','project_origin.created','project_origin.updated','project_origin.deleted','project_key.rotated')`,
     ),
   ],
 );
@@ -897,6 +963,49 @@ export const reproductionGenerationOutbox = pgTable(
   ],
 );
 
+/**
+ * Durable filesystem deletion handoff. Project deletion sets project_id to
+ * NULL so these rows survive database cascades until the worker removes the
+ * trusted storage key. The unique key makes enqueueing idempotent.
+ */
+export const artifactDeletionOutbox = pgTable(
+  "artifact_deletion_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    storageKey: text("storage_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    lastError: text("last_error"),
+  },
+  (t) => [
+    unique("artifact_deletion_outbox_storage_key_unique").on(t.storageKey),
+    index("artifact_deletion_outbox_pending_created_idx").on(
+      t.completedAt,
+      t.createdAt,
+      t.id,
+    ),
+    index("artifact_deletion_outbox_project_created_idx").on(
+      t.projectId,
+      t.createdAt,
+    ),
+    check(
+      "artifact_deletion_outbox_storage_key_check",
+      sql`char_length(${t.storageKey}) BETWEEN 1 AND 1024 AND ${t.storageKey} !~ '[[:cntrl:]]'`,
+    ),
+    check(
+      "artifact_deletion_outbox_attempt_count_check",
+      sql`${t.attemptCount} >= 0`,
+    ),
+  ],
+);
+
 /** Drizzle schema map shared by the client factory and migrations. */
 export const schema = {
   user: users,
@@ -905,6 +1014,7 @@ export const schema = {
   verification: verifications,
   workspaces,
   workspaceMemberships,
+  workspaceInvitations,
   projects,
   projectEnvironments,
   projectOrigins,
@@ -924,6 +1034,7 @@ export const schema = {
   eventProcessingOutbox,
   reproductionTests,
   reproductionGenerationOutbox,
+  artifactDeletionOutbox,
   rateLimitBuckets,
 } as const;
 

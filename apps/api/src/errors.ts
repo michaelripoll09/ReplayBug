@@ -10,6 +10,10 @@ export type DomainErrorCode =
   | "NOT_FOUND"
   | "VALIDATION_ERROR"
   | "CONFLICT"
+  | "ALREADY_WORKSPACE_MEMBER"
+  | "ACTIVE_INVITATION_EXISTS"
+  | "INVITATION_INVALID"
+  | "INVITATION_ALREADY_USED"
   | "RELEASE_VERSION_CONFLICT"
   | "ARTIFACT_PATH_INVALID"
   | "ARTIFACT_PATH_CONFLICT"
@@ -54,8 +58,43 @@ export function validationError(
   return new DomainError("VALIDATION_ERROR", message, details);
 }
 
+/** Safe response for missing, extra, or mismatched destructive confirmation. */
+export function requireConfirmationError(): DomainError {
+  return validationError("Deletion confirmation does not match");
+}
+
 export function conflict(message: string, details?: unknown): DomainError {
   return new DomainError("CONFLICT", message, details);
+}
+
+export function alreadyWorkspaceMember(): DomainError {
+  return new DomainError(
+    "ALREADY_WORKSPACE_MEMBER",
+    "The invited email already belongs to a workspace member",
+  );
+}
+
+export function activeInvitationExists(): DomainError {
+  return new DomainError(
+    "ACTIVE_INVITATION_EXISTS",
+    "An active invitation already exists for this email",
+  );
+}
+
+/** Safe for malformed, expired, revoked, or wrong-email credentials. */
+export function invitationInvalid(): DomainError {
+  return new DomainError(
+    "INVITATION_INVALID",
+    "Invitation is invalid or unavailable",
+  );
+}
+
+/** Safe conflict returned after a valid invitation has already been accepted. */
+export function invitationAlreadyUsed(): DomainError {
+  return new DomainError(
+    "INVITATION_ALREADY_USED",
+    "Invitation is invalid or unavailable",
+  );
 }
 
 /**
@@ -138,7 +177,12 @@ export function statusForCode(code: DomainErrorCode): number {
     case "VALIDATION_ERROR":
       return 400;
     case "CONFLICT":
+    case "ALREADY_WORKSPACE_MEMBER":
+    case "ACTIVE_INVITATION_EXISTS":
+    case "INVITATION_ALREADY_USED":
       return 409;
+    case "INVITATION_INVALID":
+      return 404;
     case "RELEASE_VERSION_CONFLICT":
       return 409;
     case "ARTIFACT_PATH_CONFLICT":

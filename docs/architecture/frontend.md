@@ -1,9 +1,9 @@
-# Frontend: Web Auth + Onboarding + Dashboard Shell (Block 3)
+# Frontend: Web Auth + Operations Dashboard (Block 9)
 
-Block 3 adds the Next.js dashboard client on top of the Block 2 API. Business
-rules stay in Fastify; Next.js is a thin, typed, cookie-forwarding client.
-Event ingest, SDK capture, issues, sessions, releases, SSE, notifications,
-comments and Ollama remain out of scope.
+The Next.js dashboard is a thin, typed, cookie-forwarding client for the
+Fastify API. By Block 9 it covers onboarding, project operations, issue
+investigation, and workspace governance; Fastify remains the authority for
+business rules and RBAC.
 
 ## Next.js role vs Fastify boundary
 
@@ -12,133 +12,77 @@ Browser (Next.js App Router)
   |-- renders UI, validates input (RHF+Zod), holds one-time secrets in memory
   |-- forwards HttpOnly session cookies (credentials:include, server cookie-forward)
   v
-Fastify API (RBAC authority)
-  |-- Better Auth sessions, workspaces/projects/envs/origins/keys, audit
+Fastify API (auth, data, and RBAC authority)
+  |-- Better Auth sessions, governance, project lifecycle, and observability APIs
   |-- OpenAPI from route schemas -> typed client (no drift)
 ```
 
-- No business rules in Next.js server actions; no DB access from Next.js.
-- No manual cookie decode, no parallel auth, no second permission matrix.
-- URL is the source of truth for workspace/project context (`/app/...`).
+- No business rules in Next.js server actions, no database access, no manual
+  cookie decoding, and no second permission matrix.
+- The URL is the source of truth for workspace and project context.
+- The client hides or disables deterministically forbidden actions, but direct
+  API requests remain subject to Fastify authorization.
 
-## Auth client flow
+## Auth and generated client
 
-- Official `better-auth` React client v1.7.5 (matching the API), email/password
-  only. `baseURL` is the Fastify API URL, `credentials: include`.
-- `POST /api/auth/sign-up/email` (register) auto-establishes a session;
-  register falls back to an explicit-login prompt if the cookie did not land.
-- `POST /api/auth/sign-in/email` (login) distinguishes 401
-  ("Invalid email or password") from generic failures + requestId.
-- `signOut()` clears the session, then the web clears sensitive TanStack
-  cache (`me`, `workspaces`) and redirects to `/login`.
-- No auth state in `localStorage`; only the theme uses `localStorage`
-  (via `next-themes`).
+- The official `better-auth` React client uses the Fastify API URL and
+  `credentials: include`; email/password registration establishes a session
+  and login reports authentication failures separately from generic errors.
+- Server components forward the cookie to `GET /api/v1/me`; `/app/*` and
+  `/onboarding/*` require a session before sensitive UI renders. `/` routes a
+  signed-in user to the appropriate onboarding or workspace view.
+- `pnpm api:generate` builds the Fastify dependency closure in-process,
+  writes the OpenAPI document and generated schema, and needs neither a
+  database nor an HTTP server. `pnpm api:check` regenerates and fails on
+  drift.
 
-## Route protection
+## Routes and dashboard experience
 
-Server components validate via cookie-forwarding (`lib/auth-server.ts`):
+- Project routes cover the overview, URL-driven issue list, issue detail,
+  sessions, releases, and project settings. Issue detail combines occurrence
+  selection, mapped/raw stack views, timeline context, status, assignment,
+  tags, comments, reproduction controls, and authenticated JSON export.
+- Workspace routes include the overview and settings tabs for **Members**,
+  **Invitations**, **Audit**, and **Danger Zone**.
+- Project general settings show retention as either lifetime or retained data,
+  and require explicit confirmation for project deletion. Workspace danger
+  actions similarly require confirmation for ownership transfer or deletion.
 
-```ts
-// forwards `cookie` to GET /api/v1/me, returns user or null
-getServerSessionUser();
-// redirects to /login when null; no sensitive render before the check
-requireServerSession();
-```
+## Query and live-update strategy
 
-- `/` smart-redirects: no session -> `/login`; session + no workspace ->
-  `/onboarding/workspace`; else first workspace overview.
-- `/app/*` layout calls `requireServerSession()` before rendering.
-- `/onboarding/*` layout calls `requireServerSession()`; the index route
-  consults the backend (workspaces/projects) to route new, partial, and
-  configured users.
+TanStack Query uses stable domain keys, a 30-second `staleTime`, no polling,
+and `retry: false`. Mutations invalidate only the affected domain; logout
+removes sensitive queries. SSE and notification updates invalidate the
+specific affected project, issue, session, release, or notification keys—never
+the entire cache. This preserves backend authority while keeping live status
+honest during reconnects.
 
-## Generated client
+## One-time values
 
-- `pnpm api:generate` builds the real Fastify instance in-process, calls
-  `app.swagger()`, writes `packages/api-client/openapi/openapi.json`
-  (marked `x-replaybug-generated`), then runs `openapi-typescript` to
-  `src/schema.d.ts` (auto-generated header).
-- `createReplayBugApiClient({ baseUrl, fetch })` wraps `openapi-fetch` with
-  `credentials: include` and `unwrap()` which throws a normalized `ApiError`
-  preserving `{code,message,requestId,details}` with a safe fallback.
-- The generator is self-contained: `pnpm api:generate` prepares the
-  workspace dependency closure (`^build`) before executing, so it works from
-  a clean checkout with no prebuilt `dist/`, no database, and no HTTP
-  server.
-- CI drift check: `pnpm api:check` (`api:generate` + `git diff --exit-code`
-  on both generated files).
-- OpenAPI paths: `/api/v1/me`, `/api/v1/workspaces`, `/api/v1/workspaces/:id`,
-  `/api/v1/workspaces/:workspaceId/projects`, `/api/v1/projects/:id`,
-  `/api/v1/projects/:projectId/environments`, `/api/v1/environments/:id`,
-  `/api/v1/projects/:projectId/origins`, `/api/v1/origins/:id`,
-  `/api/v1/projects/:projectId/keys`, `/api/v1/projects/:id/keys/public/rotate`,
-  plus `/health/*`, `/api/v1/meta`, `/api/auth/*` (Better Auth passthrough).
+- Project creation and key rotation reveal plaintext keys once. `OneTimeSecret`
+  keeps them in component or wizard memory, never browser storage, URLs, logs,
+  query cache, or the console.
+- Creating an invitation reveals its invitation URL once. The UI does not
+  retain or reconstruct it after dismissal; later lists expose only safe
+  invitation metadata.
 
-## Query strategy
+## Governance RBAC UX
 
-TanStack Query factories (`lib/queries.ts`): `me`, `workspaces`, `workspace`,
-`projects`, `project`, `environments`, `origins`, `keys`. Stable tuple keys,
-`staleTime` 30s, `retry: false`, no polling. Mutations invalidate only the
-exact domain key they changed (`useInvalidateDomain`); logout removes
-sensitive queries. No global invalidations, no optimistic key rotation.
+| Action                                           | Owner                    | Admin                    | Member / viewer |
+| ------------------------------------------------ | ------------------------ | ------------------------ | --------------- |
+| Invite users                                     | admin, member, or viewer | member or viewer         | no              |
+| Manage invitations and members; read audit       | yes                      | yes                      | no              |
+| Change member/viewer roles or remove them        | yes                      | limited to member/viewer | no              |
+| Transfer workspace ownership or delete workspace | yes                      | no                       | no              |
+| Set project retention or delete a project        | yes                      | yes                      | no              |
 
-## URL context
+The backend enforces this central capability policy. The frontend represents
+read-only state explicitly instead of treating visibility as authorization.
 
-- `/app/workspaces/[workspaceId]` — workspace overview.
-- `/app/projects/[projectId]` — project overview.
-- `/app/projects/[projectId]/settings[/general|/environments|/origins|/keys]`
-  — tabbed settings; the layout loads project + workspace role once and
-  provides them via context.
-- Onboarding carries ids via search params (`?workspaceId=`, `?projectId=`);
-  the wizard context carries only the one-time secret in memory.
+## Theme and verification
 
-## One-time secrets
-
-- Project creation and key rotation return the plaintext key exactly once.
-- `OneTimeSecret` (hide/reveal/copy/a11y/monospace) receives the secret as a
-  prop; it is never written to `localStorage`/`sessionStorage`/URL/logs/query
-  cache/console and disappears on unmount/reload.
-- Onboarding holds the secret in wizard context memory; the complete screen
-  reports only whether it was acknowledged, never the value.
-- Settings rotation drops any previous secret before revealing the new one.
-- Key metadata tables show prefix/status/dates only; hashes never reach the
-  browser. Verified by grep + manual storage inspection.
-
-## RBAC UX vs backend
-
-UX helpers (`lib/rbac.ts`) map `WorkspaceRole` to affordances only:
-
-| Helper                                                   | owner | admin | member/viewer         |
-| -------------------------------------------------------- | ----- | ----- | --------------------- |
-| canManageWorkspace                                       | yes   | no    | no                    |
-| canCreateProject / canManageProject                      | yes   | yes   | no (hide-or-readonly) |
-| canManageEnvironments / canManageOrigins / canRotateKeys | yes   | yes   | no                    |
-
-The backend (`apps/api/src/authz/policy.ts` + `tenancy.integration.test.ts`)
-remains the enforcer: member create/rotate -> 403, cross-tenant -> 404.
-The UI hides or disables controls that would deterministically 403 and marks
-read-only state explicitly; it never grants what the API forbids.
-
-## Theme
-
-`next-themes` (`class` attribute, system default, `suppressHydrationWarning`
-
-- `@custom-variant dark` for Tailwind v4 class-based dark mode). No flash:
-  the theme class is applied before paint. Toggle cycles light/dark/system.
-  Only the theme uses `localStorage`; secrets never do.
-
-## E2E
-
-Playwright Chromium (`apps/web/e2e/`), isolated by truncating all domain +
-auth tables before each test, synthetic `example.com` users only:
-
-1. `onboarding.spec.ts` — register -> workspace -> project (key format
-   asserted without logging) -> origin -> complete -> overview -> logout ->
-   protected redirect.
-2. `login.spec.ts` — wrong creds error, correct login, refresh persists,
-   logout, protected blocked.
-3. `rbac.spec.ts` — owner sees save/rotate, viewer read-only, direct HTTP
-   rotate as viewer -> 403.
-
-Run: `pnpm build` then `pnpm --filter @replaybug/web test:e2e`
-(requires Postgres on 5544 + migrations).
+`next-themes` applies the light, dark, or system class before paint; only the
+theme uses `localStorage`. Playwright coverage exercises authentication and
+onboarding, project settings and issue workflows, viewer read-only behavior,
+and governance confirmation paths. Browser storage is inspected to ensure
+one-time values are not persisted.

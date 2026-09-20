@@ -72,28 +72,35 @@ export default function WorkspaceOverview({
               <Badge variant="secondary">{roleLabel(ws.role)}</Badge>
             </p>
           </div>
-          {canCreate ? (
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button type="button" size="sm">
-                  New project
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>New project in “{ws.name}”</DialogTitle>
-                </DialogHeader>
-                <ProjectForm
-                  workspaceId={workspaceId}
-                  submitLabel="Create project"
-                  onCreated={() => {
-                    void invalidateProjects(workspaceId);
-                    setDialogOpen(false);
-                  }}
-                />
-              </DialogContent>
-            </Dialog>
-          ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link href={`/app/workspaces/${workspaceId}/settings`}>
+                Workspace settings
+              </Link>
+            </Button>
+            {canCreate ? (
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button type="button" size="sm">
+                    New project
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>New project in “{ws.name}”</DialogTitle>
+                  </DialogHeader>
+                  <ProjectForm
+                    workspaceId={workspaceId}
+                    submitLabel="Create project"
+                    onCreated={() => {
+                      void invalidateProjects(workspaceId);
+                      setDialogOpen(false);
+                    }}
+                  />
+                </DialogContent>
+              </Dialog>
+            ) : null}
+          </div>
         </div>
 
         {projects.isError ? (

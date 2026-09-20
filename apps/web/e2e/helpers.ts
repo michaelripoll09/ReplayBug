@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 
-/** Truncate all domain + auth + telemetry tables for isolated E2E. No personal data persists. */
+/** Truncate all application tables for isolated E2E. No personal data persists. */
 export async function resetE2EDatabase(): Promise<void> {
   const url =
     process.env["REPLAYBUG_DATABASE_URL"] ??
@@ -9,15 +9,15 @@ export async function resetE2EDatabase(): Promise<void> {
   try {
     await pool.query(`
       TRUNCATE "user", "session", "account", "verification",
-        "audit_logs", "event_processing_outbox", "events",
-        "rate_limit_buckets", "telemetry_sessions",
-        "project_keys", "project_origins",
+        "audit_logs", "event_processing_outbox", "artifact_deletion_outbox",
+        "events", "rate_limit_buckets",
+        "telemetry_sessions", "project_keys", "project_origins",
         "project_environments", "projects",
         "issue_comments", "issue_tag_assignments", "issue_tags",
-        "issue_activity", "issue_affected_sessions", "issues",
-        "notifications",
+        "issue_activity", "issue_affected_sessions", "issues", "notifications",
         "release_artifacts", "releases",
-        "workspace_memberships", "workspaces"
+        "reproduction_generation_outbox", "reproduction_tests",
+        "workspace_invitations", "workspace_memberships", "workspaces"
       RESTART IDENTITY CASCADE
     `);
   } finally {

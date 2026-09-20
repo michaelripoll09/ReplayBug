@@ -1,92 +1,115 @@
-# Tenancy, Auth and Project Credentials (Block 2)
+# Tenancy, Governance and Project Lifecycle (Block 9)
 
-Block 2 implements authentication, workspace tenancy, projects, environments,
-origins and public ingest keys. Event ingest, SDK capture, issues, jobs,
-SSE, releases and dashboard UI are explicitly out of scope.
+ReplayBug uses Better Auth users and workspace memberships. Project access derives
+from the workspace; there is no project-membership system.
 
 ## Tenancy diagram
 
 ```text
-User (Better Auth: user/session/account/verification)
-  |
-  | 1 user -> N memberships
-  v
-Membership (workspace_id + user_id unique, role owner|admin|member|viewer)
-  |
-  | N memberships -> 1 workspace
-  v
-Workspace (id UUID opaque, slug globally unique, created_by FK)
-  |
-  | 1 workspace -> N projects
-  v
-Project (workspace + slug unique, timezone default UTC, retention 30 default 7-365)
-  |
-  +-> Environments (project + name unique, single default invariant)
-  +-> Origins (project + origin unique, ORIGIN-only, no wildcards)
-  +-> Keys (prefix unique, hash at rest, one-time plaintext)
-  +-> Audit logs (append-only, workspace scope, project nullable)
+User (Better Auth)
+  -> Membership (workspace_id + user_id unique; one owner)
+  -> Workspace (globally unique slug)
+  -> Project (workspace + slug unique; timezone; retention_days 7–365)
+     -> telemetry, issues, reproductions, releases, artifact metadata
 ```
 
-## Roles and capabilities
+Workspace-scoped audit records are append-only while the workspace exists.
 
-Central policy only (`apps/api/src/authz/policy.ts`); no scattered `if (role)`
-checks. Project access derives from workspace membership; there is no
-project-membership system.
+## Roles and governance
 
-| Capability            | owner | admin | member | viewer |
-| --------------------- | ----- | ----- | ------ | ------ |
-| workspace:read        | yes   | yes   | yes    | yes    |
-| workspace:update      | yes   | no    | no     | no     |
-| project:create/read   | yes   | yes   | read   | read   |
-| project:update/delete | yes   | yes   | no     | no     |
-| environment:read      | yes   | yes   | yes    | yes    |
-| environment:write     | yes   | yes   | no     | no     |
-| origin:read           | yes   | yes   | yes    | yes    |
-| origin:write          | yes   | yes   | no     | no     |
-| key:read              | yes   | yes   | yes    | yes    |
-| key:rotate            | yes   | yes   | no     | no     |
+Roles are ordered `owner > admin > member > viewer`; the central policy in
+`apps/api/src/authz/policy.ts` is authoritative. All roles can read their
+workspace and project evidence. Owners manage workspace settings, transfer
+ownership, and delete a workspace. Owners and admins manage projects,
+environments, origins, keys, invitations, and members within the policy;
+members have ordinary project read access; viewers are read-only.
 
-Cross-tenant reads return `NOT_FOUND` (anti-enumeration), not `FORBIDDEN`.
+There is exactly one owner. The owner cannot be removed or leave. Ownership
+transfer is an owner-only, locked transaction to an existing non-owner member:
+the former owner becomes admin and the target becomes the sole owner. Role
+mutation cannot create another owner, and the last-owner invariant is checked
+before membership changes. Cross-tenant access is `NOT_FOUND`, not `FORBIDDEN`.
 
-## Auth
+## Invitations
 
-- Better Auth email/password with PostgreSQL persistence (`user`, `session`,
-  `account`, `verification`). No parallel users table; domain FKs reference
-  `user.id` directly.
-- No OAuth and no fake password reset this block.
-- Cookies: HttpOnly, Secure in production, SameSite Lax, rotation via
-  `updateAge` (24h) and 7-day expiry.
-- Strict dashboard CORS with credentials; Better Auth CSRF never disabled.
-- Config boundary: `REPLAYBUG_AUTH_SECRET` (min 32), `REPLAYBUG_API_URL`,
-  `REPLAYBUG_WEB_URL`, `REPLAYBUG_TRUSTED_ORIGINS`, `NODE_ENV`.
+Owners may invite `admin`, `member`, or `viewer`; admins may invite only
+`member` or `viewer`. An invitation never grants ownership. Email addresses are trimmed and lowercased for storage
+and comparison. Creation returns the opaque `rb_inv_...` token and invite URL
+once; ReplayBug does not send email or implement SMTP delivery.
 
-## Public keys are FUTURE write-only, ingest not built
+Only a SHA-256 hash of the complete token and its non-secret prefix are stored.
+Tokens contain 256 bits of CSPRNG secret material, are verified with a
+constant-time comparison, expire seven days after creation, and are bound to
+the currently authenticated user's normalized email. Acceptance locks the
+invitation and membership state, creates the membership only when the recipient
+is not already a member, and marks the invitation accepted. Replayed, revoked,
+expired, wrong-email, and already-member attempts do not grant access.
 
-- Format: `rb_pk_<prefix>_<secret>` where prefix is 8 hex chars (lookup/display,
-  not secret) and secret is 32 CSPRNG bytes base64url (256-bit).
-- Stored as `prefix` + `sha256(fullKey)` hex; verified with `timingSafeEqual`.
-  Plaintext is returned ONE time at creation/rotation and never re-displayed.
-- Rotation revokes old actives and creates a new key in one transaction; old
-  rows are retained auditable.
-- `project POST` returns a `bootstrap` section with the one-time key, prefix,
-  projectId and an explicitly FUTURE ingest endpoint marked non-functional.
-- Allowed origins are ORIGIN-only (scheme + host + port, no path/query/fragment),
-  http/https only, no `*` wildcards. `http://localhost:<port>` must be explicit
-  (never `http://localhost:*`) and is dev-only by policy.
-- Environment `base_url` allows http/https with optional path; rejects
-  `javascript:`, `file:`, `data:`.
-- Audit actions: `workspace.created/updated`, `project.created/updated/deleted`,
-  `project_origin.created/updated/deleted`, `project_key.rotated`. Metadata is
-  sanitized; no plaintext keys, cookies or passwords are stored.
+At most one active pending invitation exists for a workspace/email pair.
+Revocation and the worker's expired-invitation cleanup retire pending entries;
+historical metadata remains listable to authorized administrators, but tokens
+and token hashes never enter DTOs or audit metadata.
 
-## Transactions
+## Audit access
 
-- Create workspace = workspace + owner membership + audit in ONE transaction.
-- Create project = project + `production` env (default) + initial key + audit in
-  ONE transaction.
-- Rotate key = revoke old + create new + audit in ONE transaction.
-- Delete project is transactional and idempotent; audit row survives with
-  `project_id` set to null.
-- Single default environment is enforced by a partial unique index plus service
-  logic; deleting the default promotes the smallest remaining name; the last
-  environment cannot be deleted.
+Governance and project-lifecycle actions write sanitized, bounded metadata and
+a safe actor identity. No plaintext keys, invitation tokens, credentials,
+cookies, telemetry payloads, or arbitrary JSON are stored or rendered.
+
+The workspace settings audit view requires audit-read capability and offers an
+action filter plus newest-first keyset pagination on `(created_at, id)`, with a
+maximum page size of 100. Cursors are opaque and invalid cursors fail validation.
+The UI summarizes allowlisted scalar metadata rather than rendering arbitrary
+metadata values.
+
+## Retention
+
+Each project has `retention_days` from 7 through 365. The worker compares UTC
+`timestamptz` values to the project-specific cutoff
+`now - retention_days * interval '1 day'`; it does not use browser or workspace
+local time.
+
+A pass is one bounded transaction. It selects oldest eligible events and
+sessions in stable order using `FOR UPDATE SKIP LOCKED`, rechecks mutable
+conditions under the lock, then deletes at most the configured batch. Eligible
+events are processed or rejected, older than the cutoff, have no undispatched
+event outbox entry, and have no pending reproduction. This removes raw event
+payload/evidence only after work that needs it is safe.
+
+Issue lifetime counters, issue activity and comments, completed/failed
+reproduction history, and issue rows remain. `issue_affected_sessions` also
+remains: it is the lifetime distinct-session deduplication key, so a telemetry
+session referenced by it may outlive raw-event retention. A session is deleted
+only after its cutoff when it has no events and no affected-session relation.
+Pending events and pending reproductions are protected rather than expired.
+
+## Confirmed deletion and local artifacts
+
+Project and workspace deletion requires the current slug exactly, including
+case; normalized or case-folded confirmation is rejected. The API locks the
+target, checks authorization and confirmation, validates every release artifact
+against its canonical storage key, enqueues those keys in the durable
+artifact-deletion outbox, writes lifecycle audit records, and only then performs
+the relational cascade in the same transaction.
+
+The outbox has a unique storage key, so repeated or overlapping cascades are
+idempotent. The worker claims bounded pending rows with `FOR UPDATE SKIP LOCKED`,
+deletes files from the local filesystem, and marks completion. Failures remain
+retryable; a crash after unlink and before completion is safe because a missing
+local file counts as deleted on retry.
+
+Project audit rows survive project deletion with `project_id = NULL`. Workspace
+audit history does **not** survive workspace deletion: workspace deletion
+cascades its audit rows, including the deletion-requested and deletion-completed
+rows. This is the current behavior, not durable historical workspace audit.
+
+See [Worker](worker.md) for runners and configuration, and
+[Self-hosting](../self-hosting.md) for shared-directory operations.
+
+## Auth and credentials
+
+Better Auth uses email/password with PostgreSQL persistence, HttpOnly cookies,
+Secure-in-production and SameSite Lax settings. There is no OAuth, SSO, or
+billing integration. Public ingest keys remain one-time plaintext at creation
+or rotation, hash at rest, and are separate from CLI Bearer tokens and browser
+sessions.

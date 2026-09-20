@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, lte, or, sql, type SQL } from "drizzle-orm";
 import {
   telemetrySessions,
   events,
@@ -6,7 +6,7 @@ import {
   projectKeys,
   projectOrigins,
 } from "../schema.js";
-import type { DbOrTx } from "./db-types.js";
+import type { Database, DbOrTx, DbTransaction } from "./db-types.js";
 
 export type TelemetrySessionRow = typeof telemetrySessions.$inferSelect;
 export type EventRow = typeof events.$inferSelect;
@@ -275,17 +275,122 @@ export async function listOriginsByProject(
     .where(eq(projectOrigins.projectId, projectId));
 }
 
+/** Maximum rows selected by one rate-limit cleanup transaction. */
+export const MAX_RATE_LIMIT_CLEANUP_BATCH_SIZE = 1000;
+export const DEFAULT_RATE_LIMIT_CLEANUP_BATCH_SIZE = 100;
+const MAX_RATE_LIMIT_AGE_MINUTES = 60 * 24 * 365;
+
+function boundedRateLimitCleanupBatchSize(limit: number): number {
+  if (
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > MAX_RATE_LIMIT_CLEANUP_BATCH_SIZE
+  ) {
+    throw new RangeError(
+      `Rate-limit cleanup batch size must be an integer between 1 and ${MAX_RATE_LIMIT_CLEANUP_BATCH_SIZE}`,
+    );
+  }
+  return limit;
+}
+
+function boundedRateLimitAge(olderThanMinutes: number): number {
+  if (
+    !Number.isInteger(olderThanMinutes) ||
+    olderThanMinutes < 0 ||
+    olderThanMinutes > MAX_RATE_LIMIT_AGE_MINUTES
+  ) {
+    throw new RangeError(
+      `Rate-limit cleanup age must be an integer between 0 and ${MAX_RATE_LIMIT_AGE_MINUTES} minutes`,
+    );
+  }
+  return olderThanMinutes;
+}
+
+function assertRateLimitCleanupDate(now: Date): void {
+  if (Number.isNaN(now.getTime())) {
+    throw new RangeError("Rate-limit cleanup now must be a valid date");
+  }
+}
+
+function isDatabase(db: DbOrTx): db is Database {
+  return (
+    typeof (db as unknown as { transaction?: unknown }).transaction ===
+    "function"
+  );
+}
+
 /**
- * Clean up old rate limit buckets (older than 1 hour).
- * Intended to be called by a scheduled job.
+ * Deletes one bounded, deterministic batch of old rate-limit buckets.
+ *
+ * Selection and deletion happen in the same transaction. Row locks with
+ * `SKIP LOCKED` make concurrent workers partition the batch instead of
+ * blocking each other or selecting the same bucket twice.
  */
 export async function cleanupRateLimitBuckets(
   db: DbOrTx,
   olderThanMinutes = 60,
+  limit = DEFAULT_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+  now = new Date(),
 ): Promise<number> {
-  const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
-  const result = await db
-    .delete(rateLimitBuckets)
-    .where(lte(rateLimitBuckets.bucketStart, cutoff));
+  const age = boundedRateLimitAge(olderThanMinutes);
+  const batchSize = boundedRateLimitCleanupBatchSize(limit);
+  assertRateLimitCleanupDate(now);
+
+  if (isDatabase(db)) {
+    return db.transaction((tx) =>
+      cleanupRateLimitBucketsInTransaction(tx, age, batchSize, now),
+    );
+  }
+  return cleanupRateLimitBucketsInTransaction(db, age, batchSize, now);
+}
+
+/** Transaction-bound variant used when retention cleans multiple tables atomically. */
+export async function cleanupRateLimitBucketsInTransaction(
+  tx: DbTransaction,
+  olderThanMinutes = 60,
+  limit = DEFAULT_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+  now = new Date(),
+): Promise<number> {
+  const age = boundedRateLimitAge(olderThanMinutes);
+  const batchSize = boundedRateLimitCleanupBatchSize(limit);
+  assertRateLimitCleanupDate(now);
+  const cutoff = new Date(now.getTime() - age * 60 * 1000);
+  const candidates = await tx
+    .select({
+      projectId: rateLimitBuckets.projectId,
+      keyPrefix: rateLimitBuckets.keyPrefix,
+      bucketStart: rateLimitBuckets.bucketStart,
+    })
+    .from(rateLimitBuckets)
+    .where(lte(rateLimitBuckets.bucketStart, cutoff))
+    .orderBy(
+      asc(rateLimitBuckets.bucketStart),
+      asc(rateLimitBuckets.projectId),
+      asc(rateLimitBuckets.keyPrefix),
+    )
+    .limit(batchSize)
+    .for("update", { skipLocked: true });
+
+  if (candidates.length === 0) {
+    return 0;
+  }
+
+  const predicates: SQL[] = [];
+  for (const candidate of candidates) {
+    const predicate = and(
+      eq(rateLimitBuckets.projectId, candidate.projectId),
+      eq(rateLimitBuckets.keyPrefix, candidate.keyPrefix),
+      eq(rateLimitBuckets.bucketStart, candidate.bucketStart),
+    );
+    if (predicate !== undefined) {
+      predicates.push(predicate);
+    }
+  }
+  const predicate = or(...predicates);
+  if (predicate === undefined) {
+    return 0;
+  }
+
+  const result = await tx.delete(rateLimitBuckets).where(predicate);
   return result.rowCount ?? 0;
 }

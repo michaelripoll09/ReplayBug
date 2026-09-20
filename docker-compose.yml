@@ -53,9 +53,9 @@ services:
     environment:
       REPLAYBUG_ARTIFACT_DIR: /var/lib/replaybug/artifacts
     volumes:
-      # Read-only: the worker only ever reads blobs through
-      # Pick<ArtifactStorage, "get"> for symbolication.
-      - replaybug_artifacts:/var/lib/replaybug/artifacts:ro
+      # Read/write: the worker reads maps for symbolication and deletes
+      # durable artifact-deletion outbox entries on the shared volume.
+      - replaybug_artifacts:/var/lib/replaybug/artifacts
 
 volumes:
   replaybug-postgres-data:

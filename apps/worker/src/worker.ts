@@ -21,6 +21,9 @@ import { createProcessEventJobHandler } from "./processors/process-event-handler
 import { createGenerateReproductionJobHandler } from "./processors/generate-reproduction.js";
 import { startOutboxDispatcher } from "./dispatcher/outbox-dispatcher.js";
 import { startOutboxReconciliation } from "./reconciliation/outbox-reconciliation.js";
+import { startExpiredInvitationCleanupRunner } from "./cleanup/invitations.js";
+import { startRetentionCleanupRunner } from "./cleanup/retention.js";
+import { startArtifactDeletionRunner } from "./cleanup/artifact-deletion.js";
 import {
   createPgBossReproductionPublisher,
   startReproductionDispatcher,
@@ -30,7 +33,7 @@ import type { ProcessEventPublisher } from "./dispatcher/publish-batch.js";
 
 /**
  * Worker composition root: pg-boss, the process-event + generate-reproduction
- * consumers and the outbox loops. Ordering on startup is deliberate —
+ * consumers, outbox loops, and bounded invitation/retention cleanup. Ordering on startup is deliberate —
  * pg-boss schema/queues first, then consumers, then dispatching — and on
  * shutdown the reverse: stop claiming work, wait for in-flight jobs, then
  * close pg-boss.
@@ -53,6 +56,8 @@ export interface WorkerRuntimeDeps {
   config: WorkerConfig;
   logger: Logger;
   client: DbClient;
+  /** Injected full artifact store for deletion and symbolication tests. */
+  artifactStorage?: ArtifactStorage;
   /**
    * Injected pg-boss instance. Tests provide one; production builds it from
    * config. When injected, `stop()` still stops it but never closes a
@@ -75,16 +80,13 @@ const SHUTDOWN_TIMEOUT_MS = 15_000;
  * and run without storage so symbolication degrades to raw
  * (`storage_unavailable`) while events/issues/SSE keep working.
  */
-function resolveArtifactStorage(
-  logger: Logger,
-): Pick<ArtifactStorage, "get"> | undefined {
+function resolveArtifactStorage(logger: Logger): ArtifactStorage | undefined {
   try {
     return LocalArtifactStorage.fromEnv();
   } catch (error) {
     if (error instanceof ArtifactConfigError) {
       logger.warn(
-        { err: error },
-        "Artifact storage misconfigured; symbolication degrades to raw",
+        "Artifact storage misconfigured; symbolication and deletion cleanup are paused",
       );
       return undefined;
     }
@@ -116,7 +118,7 @@ export async function startWorkerRuntime(
 
   const publisher = createPgBossPublisher(boss);
   const reproductionPublisher = createPgBossReproductionPublisher(boss);
-  const storage = resolveArtifactStorage(logger);
+  const storage = deps.artifactStorage ?? resolveArtifactStorage(logger);
   const handler = createProcessEventJobHandler({
     db: client.db,
     logger,
@@ -179,6 +181,28 @@ export async function startWorkerRuntime(
       config.reproductionOutboxPollMs * 5,
     ),
   });
+  const invitationCleanup = startExpiredInvitationCleanupRunner({
+    db: client.db,
+    batchSize: config.invitationCleanupBatchSize,
+    intervalMs: config.invitationCleanupIntervalMs,
+    logger,
+  });
+  const retentionCleanup = startRetentionCleanupRunner({
+    db: client.db,
+    batchSize: config.retentionCleanupBatchSize,
+    intervalMs: config.retentionCleanupIntervalMs,
+    logger,
+  });
+  const artifactDeletion =
+    storage === undefined
+      ? null
+      : startArtifactDeletionRunner({
+          db: client.db,
+          storage,
+          batchSize: config.artifactDeletionBatchSize,
+          intervalMs: config.artifactDeletionPollMs,
+          logger,
+        });
 
   let stopped = false;
   return {
@@ -189,6 +213,9 @@ export async function startWorkerRuntime(
       }
       stopped = true;
       logger.info("Worker stopping: no longer claiming new work");
+      await artifactDeletion?.stop();
+      await retentionCleanup.stop();
+      await invitationCleanup.stop();
       await dispatcher.stop();
       await reconciliation.stop();
       await reproductionDispatcher.stop();

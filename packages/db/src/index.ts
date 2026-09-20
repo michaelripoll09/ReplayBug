@@ -27,6 +27,7 @@ export {
   verifications,
   workspaces,
   workspaceMemberships,
+  workspaceInvitations,
   projects,
   projectEnvironments,
   projectOrigins,
@@ -46,6 +47,7 @@ export {
   eventProcessingOutbox,
   reproductionTests,
   reproductionGenerationOutbox,
+  artifactDeletionOutbox,
   rateLimitBuckets,
   processingStateEnum,
 } from "./schema.js";
@@ -81,6 +83,30 @@ export type {
   StoredEventRejectionCode,
 } from "./domain/index.js";
 export {
+  INVITATION_EXPIRY_DAYS,
+  INVITATION_ROLES,
+  INVITATION_TOKEN_PREFIX,
+  INVITATION_TTL_MS,
+  InvitationEmailError,
+  InvitationRoleError,
+  InvitationTokenError,
+  defaultInvitationExpiry,
+  extractInvitationTokenPrefix,
+  generateInvitationToken,
+  hashInvitationToken,
+  normalizeInvitationEmail,
+  parseInvitationToken,
+  validateInvitationRole,
+  validateInvitationTokenHash,
+  validateInvitationTokenPrefix,
+  verifyInvitationToken,
+} from "./invitations.js";
+export type {
+  GeneratedInvitationToken,
+  InvitationRole,
+  ParsedInvitationToken,
+} from "./invitations.js";
+export {
   parseOrigin,
   parseBaseUrl,
   isLocalhostOrigin,
@@ -113,11 +139,31 @@ export type {
 } from "./repositories/db-types.js";
 export * as WorkspaceRepo from "./repositories/workspaces.js";
 export * as MembershipRepo from "./repositories/memberships.js";
+export {
+  lockWorkspaceById,
+  deleteWorkspaceRow,
+} from "./repositories/workspaces.js";
+export {
+  lockMembershipsByWorkspace,
+  updateMembershipRole,
+  deleteMembership,
+} from "./repositories/memberships.js";
+export * as InvitationRepo from "./repositories/invitations.js";
+export * as ArtifactDeletionRepo from "./repositories/artifact-deletion.js";
 export * as ProjectRepo from "./repositories/projects.js";
+export {
+  lockProjectById,
+  lockProjectsByWorkspace,
+} from "./repositories/projects.js";
+export * as RetentionRepo from "./repositories/retention.js";
 export * as EnvironmentRepo from "./repositories/environments.js";
 export * as OriginRepo from "./repositories/origins.js";
 export * as ProjectKeyRepo from "./repositories/keys.js";
 export * as ReleaseRepo from "./repositories/releases.js";
+export {
+  lockReleasesByProjects,
+  lockArtifactsByReleases,
+} from "./repositories/releases.js";
 export type {
   ReleaseRow,
   ReleaseArtifactRow,
@@ -126,6 +172,20 @@ export type {
   InsertReleaseArtifactInput,
 } from "./repositories/releases.js";
 export * as AuditRepo from "./repositories/audit.js";
+export {
+  AUDIT_ACTIONS,
+  MAX_AUDIT_QUERY_LIMIT,
+  encodeAuditCursor,
+  decodeAuditCursor,
+  listAuditByWorkspacePaged,
+  sanitizeAuditMetadata,
+} from "./repositories/audit.js";
+export type {
+  AuditAction,
+  AuditCursor,
+  ListAuditInput,
+  ListAuditResult,
+} from "./repositories/audit.js";
 export * as TelemetryRepo from "./repositories/telemetry.js";
 export * as IssueRepo from "./repositories/issues.js";
 export * as IssueActivityRepo from "./repositories/issue-activity.js";
@@ -159,6 +219,10 @@ export {
   insertEvent,
   eventExists,
   checkAndIncrementRateLimit,
+  cleanupRateLimitBuckets,
+  cleanupRateLimitBucketsInTransaction,
+  MAX_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+  DEFAULT_RATE_LIMIT_CLEANUP_BATCH_SIZE,
   findKeyByPrefix,
   listOriginsByProject,
 } from "./repositories/telemetry.js";
@@ -171,6 +235,65 @@ export {
   recordOutboxDispatchFailure,
 } from "./repositories/outbox.js";
 export type { OutboxRow, PendingOutboxItem } from "./repositories/outbox.js";
+export {
+  insertInvitation,
+  findInvitationById,
+  lockInvitationById,
+  findInvitationCandidatesByTokenPrefix,
+  lockInvitationCandidatesByTokenPrefix,
+  findActiveInvitationByWorkspaceEmail,
+  lockActiveInvitationByWorkspaceEmail,
+  listExpiredPendingInvitations,
+  lockExpiredPendingInvitations,
+  retireExpiredPendingInvitations,
+  markInvitationAccepted,
+  markInvitationRevoked,
+  listInvitationMetadataByWorkspace,
+  invitationTokenPrefixForLookup,
+  MAX_INVITATION_QUERY_LIMIT,
+  MAX_INVITATION_TOKEN_CANDIDATES,
+  MAX_EXPIRED_INVITATION_RETIRE_LIMIT,
+} from "./repositories/invitations.js";
+export type {
+  InsertInvitationInput,
+  InvitationMetadataRow,
+  InvitationRow,
+  InvitationTokenLookupRow,
+  ExpiredInvitationCleanupOptions,
+} from "./repositories/invitations.js";
+export {
+  computeProjectRetentionCutoff,
+  MIN_PROJECT_RETENTION_DAYS,
+  MAX_PROJECT_RETENTION_DAYS,
+  PROJECT_RETENTION_DAY_MS,
+} from "./repositories/projects.js";
+export {
+  runRetentionCleanupBatch,
+  MAX_RETENTION_CLEANUP_BATCH_SIZE,
+  DEFAULT_RETENTION_CLEANUP_BATCH_SIZE,
+  DEFAULT_RATE_LIMIT_CLEANUP_AGE_MINUTES,
+} from "./repositories/retention.js";
+export type {
+  RetentionCleanupBatchOptions,
+  RetentionCleanupBatchResult,
+} from "./repositories/retention.js";
+export {
+  insertArtifactDeletionOutbox,
+  findArtifactDeletionOutboxByStorageKey,
+  claimPendingArtifactDeletionBatch,
+  markArtifactDeletionCompleted,
+  recordArtifactDeletionFailure,
+  parseArtifactDeletionStorageKey,
+  sanitizeArtifactDeletionError,
+  MAX_ARTIFACT_DELETION_BATCH_SIZE,
+  MAX_ARTIFACT_DELETION_ERROR_LENGTH,
+} from "./repositories/artifact-deletion.js";
+export type {
+  ArtifactDeletionOutboxRow,
+  InsertArtifactDeletionOutboxInput,
+  PendingArtifactDeletionItem,
+  ParsedArtifactDeletionStorageKey,
+} from "./repositories/artifact-deletion.js";
 export {
   insertPendingReproduction,
   findReproductionById,
@@ -325,7 +448,11 @@ export type {
   ListNotificationsInput,
   ListNotificationsResult,
 } from "./repositories/notifications.js";
-export { findUsersByIds } from "./repositories/users.js";
+export {
+  findUserByEmail,
+  lockUserById,
+  findUsersByIds,
+} from "./repositories/users.js";
 export type { UserRow } from "./repositories/users.js";
 export {
   notifyProjectIssueUpdate,

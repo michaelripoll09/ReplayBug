@@ -486,13 +486,14 @@ describe("Block 2 tenancy integration (real PG)", () => {
           headers: { cookie: cookies },
           payload: { name: "Del Proj" },
         })
-      ).json()) as { project: { id: string } }
+      ).json()) as { project: { id: string; slug: string } }
     ).project;
 
     const first = await app.inject({
       method: "DELETE",
       url: `/api/v1/projects/${proj.id}`,
       headers: { cookie: cookies },
+      payload: { confirmation: proj.slug },
     });
     expect(first.statusCode).toBe(200);
     expect(first.json()).toEqual({ deleted: true });
@@ -501,6 +502,7 @@ describe("Block 2 tenancy integration (real PG)", () => {
       method: "DELETE",
       url: `/api/v1/projects/${proj.id}`,
       headers: { cookie: cookies },
+      payload: { confirmation: proj.slug },
     });
     expect(second.statusCode).toBe(200);
     expect(second.json()).toEqual({ deleted: false });

@@ -63,6 +63,27 @@ export const updateProjectRequestSchema = z
 
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
 
+/** Destructive project deletion requires the current slug verbatim. */
+export const deleteProjectRequestSchema = z
+  .object({
+    confirmation: z.string().min(1).max(100),
+  })
+  .strict();
+
+export type DeleteProjectRequest = z.infer<typeof deleteProjectRequestSchema>;
+
+export const projectDeletionRequestSchema = deleteProjectRequestSchema;
+export type ProjectDeletionRequest = DeleteProjectRequest;
+
+export const deleteProjectResponseSchema = z
+  .object({ deleted: z.boolean() })
+  .strict();
+
+export type DeleteProjectResponse = z.infer<typeof deleteProjectResponseSchema>;
+
+export const projectDeletionResponseSchema = deleteProjectResponseSchema;
+export type ProjectDeletionResponse = DeleteProjectResponse;
+
 /** Project bootstrap returned once on creation: one-time plaintext key. */
 export const projectBootstrapSchema = z.object({
   key: z.string().min(1),

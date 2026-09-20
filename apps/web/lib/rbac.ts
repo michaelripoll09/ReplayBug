@@ -39,6 +39,91 @@ export function canRotateKeys(role: WorkspaceRole): boolean {
   return role === "owner" || role === "admin";
 }
 
+/** Workspace governance capability thresholds mirror the backend policy. */
+export type WorkspaceMemberRole = Exclude<WorkspaceRole, "owner">;
+
+export function canManageMembers(role: WorkspaceRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+export function canManageInvitations(role: WorkspaceRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+export function canManageAudit(role: WorkspaceRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+export function canTransferOwnership(role: WorkspaceRole): boolean {
+  return role === "owner";
+}
+
+export function canDeleteWorkspace(role: WorkspaceRole): boolean {
+  return role === "owner";
+}
+
+export function canLeaveWorkspace(role: WorkspaceRole): boolean {
+  return (
+    role === "owner" ||
+    role === "admin" ||
+    role === "member" ||
+    role === "viewer"
+  );
+}
+
+/** Owner can change every non-owner; admin can change member/viewer only. */
+export function canChangeMemberRole(
+  actorRole: WorkspaceRole,
+  targetRole: WorkspaceRole,
+  nextRole: WorkspaceMemberRole,
+): boolean {
+  if (targetRole === "owner") {
+    return false;
+  }
+  if (actorRole === "owner") {
+    return true;
+  }
+  return (
+    actorRole === "admin" &&
+    (targetRole === "member" || targetRole === "viewer") &&
+    (nextRole === "member" || nextRole === "viewer")
+  );
+}
+
+/** Owner can remove every non-owner; admin can remove member/viewer only. */
+export function canRemoveMember(
+  actorRole: WorkspaceRole,
+  targetRole: WorkspaceRole,
+): boolean {
+  if (targetRole === "owner") {
+    return false;
+  }
+  if (actorRole === "owner") {
+    return true;
+  }
+  return (
+    actorRole === "admin" &&
+    (targetRole === "member" || targetRole === "viewer")
+  );
+}
+
+/** Owner can invite all non-owner roles; admin can invite member/viewer only. */
+export function canInviteRole(
+  actorRole: WorkspaceRole,
+  invitedRole: WorkspaceRole,
+): boolean {
+  if (invitedRole === "owner") {
+    return false;
+  }
+  if (actorRole === "owner") {
+    return true;
+  }
+  return (
+    actorRole === "admin" &&
+    (invitedRole === "member" || invitedRole === "viewer")
+  );
+}
+
 /**
  * RS-10 secret project tokens (CLI/CI-only). Mirrors the backend
  * `project:manage-secret-tokens` capability (owner/admin): member and viewer

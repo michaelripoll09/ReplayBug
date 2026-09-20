@@ -3,6 +3,7 @@ import {
   commentListQuerySchema,
   createCommentRequestSchema,
   createTagRequestSchema,
+  issueExportQuerySchema,
   issueListQuerySchema,
   metricsQuerySchema,
   occurrenceListQuerySchema,
@@ -33,6 +34,11 @@ import {
   updateIssueComment,
   updateIssueStatus,
 } from "../services/issues.js";
+import {
+  getIssueExport,
+  sanitizeIssueExportFilename,
+  serializeIssueExport,
+} from "../services/issue-export.js";
 
 export interface IssueRouteDeps {
   db: Database;
@@ -484,6 +490,179 @@ const eventDetailJson = {
   },
 } as const;
 
+const issueExportIssueJson = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "projectId",
+    "type",
+    "title",
+    "normalizedMessage",
+    "status",
+    "severity",
+    "firstSeenAt",
+    "lastSeenAt",
+    "resolvedAt",
+    "firstRelease",
+    "lastRelease",
+    "occurrenceCount",
+    "affectedSessionCount",
+    "tags",
+    "createdAt",
+    "updatedAt",
+  ],
+  properties: {
+    id: { type: "string" },
+    projectId: { type: "string" },
+    type: { type: "string" },
+    title: { type: "string" },
+    normalizedMessage: { type: "string" },
+    status: { type: "string" },
+    severity: { type: "string" },
+    firstSeenAt: { type: "string" },
+    lastSeenAt: { type: "string" },
+    resolvedAt: { type: ["string", "null"] },
+    firstRelease: { type: ["string", "null"] },
+    lastRelease: { type: ["string", "null"] },
+    occurrenceCount: { type: "number" },
+    affectedSessionCount: { type: "number" },
+    tags: { type: "array", items: issueTagSummaryJson },
+    createdAt: { type: "string" },
+    updatedAt: { type: "string" },
+  },
+} as const;
+
+const issueExportPreferredFrameJson = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    filename: { type: "string" },
+    function: { type: "string" },
+    lineno: { type: "number" },
+    colno: { type: "number" },
+    inApp: { type: "boolean" },
+    source: { type: "string" },
+    name: { type: ["string", "null"] },
+    line: { type: "number" },
+    column: { type: "number" },
+    inApplication: { type: "boolean" },
+    mapped: { type: "boolean" },
+  },
+} as const;
+
+const issueExportStackJson = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "symbolicationStatus",
+    "rawFrames",
+    "mappedFrames",
+    "preferredStack",
+  ],
+  properties: {
+    symbolicationStatus: { type: ["string", "null"] },
+    rawFrames: { type: "array", items: diagnosticFrameJson, maxItems: 50 },
+    mappedFrames: {
+      type: ["array", "null"],
+      items: eventSymbolicationMappedFrameJson,
+      maxItems: 50,
+    },
+    preferredStack: {
+      type: "array",
+      maxItems: 50,
+      items: issueExportPreferredFrameJson,
+    },
+  },
+} as const;
+
+const issueExportReproductionJson = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "eventId",
+    "status",
+    "language",
+    "framework",
+    "hasRedactedSteps",
+    "generatorVersion",
+    "errorCode",
+    "completedAt",
+    "createdAt",
+  ],
+  properties: {
+    id: { type: "string" },
+    eventId: { type: ["string", "null"] },
+    status: { type: "string", enum: ["pending", "ready", "failed"] },
+    language: { type: "string" },
+    framework: { type: "string" },
+    hasRedactedSteps: { type: "boolean" },
+    generatorVersion: { type: "string" },
+    errorCode: { type: ["string", "null"] },
+    completedAt: { type: ["string", "null"] },
+    createdAt: { type: "string" },
+  },
+} as const;
+
+const issueExportTimelineEventJson = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "sequenceNumber",
+    "eventType",
+    "occurredAt",
+    "receivedAt",
+    "environment",
+    "release",
+    "pageUrl",
+    "processingState",
+    "summary",
+  ],
+  properties: {
+    id: { type: "string" },
+    sequenceNumber: { type: "number" },
+    eventType: { type: "string" },
+    occurredAt: { type: "string" },
+    receivedAt: { type: "string" },
+    environment: { type: "string" },
+    release: { type: ["string", "null"] },
+    pageUrl: { type: ["string", "null"] },
+    processingState: { type: "string" },
+    summary: { type: "string" },
+  },
+} as const;
+
+const issueExportJson = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "exportedAt",
+    "issue",
+    "occurrence",
+    "stack",
+    "timeline",
+    "reproductions",
+  ],
+  properties: {
+    exportedAt: { type: "string" },
+    issue: issueExportIssueJson,
+    occurrence: { anyOf: [occurrenceJson, { type: "null" }] },
+    stack: { anyOf: [issueExportStackJson, { type: "null" }] },
+    timeline: {
+      type: "array",
+      items: issueExportTimelineEventJson,
+      maxItems: 26,
+    },
+    reproductions: {
+      type: "array",
+      items: issueExportReproductionJson,
+      maxItems: 20,
+    },
+  },
+} as const;
+
 const metricsJson = {
   type: "object",
   required: [
@@ -717,6 +896,55 @@ export async function registerIssueRoutes(
         const params = request.params as { issueId: string };
         const item = await getIssueById(deps.db, user.id, params.issueId);
         await reply.send(item);
+      } catch (error) {
+        await sendDomainError(request, reply, error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/issues/:issueId/export",
+    {
+      schema: {
+        tags: ["Issues"],
+        params: {
+          type: "object",
+          required: ["issueId"],
+          properties: { issueId: { type: "string", format: "uuid" } },
+        },
+        querystring: {
+          type: "object",
+          properties: {
+            eventId: { type: "string", format: "uuid" },
+          },
+        },
+        response: {
+          200: issueExportJson,
+          400: errorJson,
+          401: errorJson,
+          404: errorJson,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const user = await getSessionUser(request, deps.auth);
+        if (user === null) {
+          throw authRequired();
+        }
+        const params = request.params as { issueId: string };
+        const query = issueExportQuerySchema.parse(request.query);
+        const exportData = await getIssueExport(
+          deps.db,
+          user.id,
+          params.issueId,
+          query,
+        );
+        const filename = sanitizeIssueExportFilename(params.issueId);
+        await reply
+          .header("content-type", "application/json; charset=utf-8")
+          .header("content-disposition", `attachment; filename="${filename}"`)
+          .send(serializeIssueExport(exportData));
       } catch (error) {
         await sendDomainError(request, reply, error);
       }

@@ -29,6 +29,7 @@ import { RouteSkeleton } from "@/components/ui/skeleton";
 import { ProjectNav } from "@/components/project/project-nav";
 import { RealtimeStatus } from "@/components/realtime-status";
 import { IssueStatusBadge } from "@/components/issues/issue-status-badge";
+import { IssueExportButton } from "@/components/issues/issue-export-button";
 import {
   StackView,
   toStackDiagnostic,
@@ -287,8 +288,8 @@ export default function IssueDetailPage({
             </h1>
             <p className="mt-1 flex flex-wrap items-center gap-3 font-mono text-xs text-zinc-500">
               <span>
-                {detail.occurrenceCount}× · {detail.affectedSessionCount}{" "}
-                sessions
+                Lifetime aggregate totals: {detail.occurrenceCount} occurrences
+                · {detail.affectedSessionCount} affected sessions
               </span>
               <span>first {formatDateTime(detail.firstSeenAt)}</span>
               <span>last {formatDateTime(detail.lastSeenAt)}</span>
@@ -342,27 +343,34 @@ export default function IssueDetailPage({
             <h2 id="evidence-heading" className="text-sm font-semibold">
               Occurrence evidence
             </h2>
-            {occurrenceItems.length > 1 ? (
-              <div className="flex items-center gap-2 text-xs">
-                <label htmlFor="occurrence">Occurrence</label>
-                <select
-                  id="occurrence"
-                  value={selectedEventId ?? ""}
-                  onChange={(e) => selectEvent(e.target.value)}
-                  className="h-8 rounded-md border border-zinc-200 bg-white px-2 font-mono text-xs dark:border-zinc-800 dark:bg-zinc-950"
-                >
-                  {occurrenceItems.map((o) => (
-                    <option key={o.eventId} value={o.eventId}>
-                      {formatDateTime(o.occurredAt)} · {o.environment}
-                      {o.release !== null ? ` · ${o.release}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {occurrenceItems.length > 1 ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <label htmlFor="occurrence">Occurrence</label>
+                  <select
+                    id="occurrence"
+                    value={selectedEventId ?? ""}
+                    onChange={(e) => selectEvent(e.target.value)}
+                    className="h-8 rounded-md border border-zinc-200 bg-white px-2 font-mono text-xs dark:border-zinc-800 dark:bg-zinc-950"
+                  >
+                    {occurrenceItems.map((o) => (
+                      <option key={o.eventId} value={o.eventId}>
+                        {formatDateTime(o.occurredAt)} · {o.environment}
+                        {o.release !== null ? ` · ${o.release}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              <IssueExportButton issueId={issueId} eventId={selectedEventId} />
+            </div>
           </div>
           <p className="mt-1 font-mono text-xs text-zinc-500">
             {detail.normalizedMessage}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Lifetime totals above can outlast retention. Only currently retained
+            occurrences and sessions are available below.
           </p>
           <div className="mt-3">
             {selectedEventId !== null && selectedEventId !== undefined ? (

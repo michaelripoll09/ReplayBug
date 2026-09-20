@@ -128,4 +128,33 @@ describe("createReplayBugApiClient", () => {
     expect(data).toMatchObject({ status: "ok" });
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
+
+  it("supports the issue export path and retained event selection", async () => {
+    const fakeFetch = (async (input: string | URL | Request) => {
+      const request =
+        input instanceof Request ? input : new Request(String(input));
+      expect(request.url).toContain("/api/v1/issues/");
+      expect(request.url).toContain("/export");
+      expect(request.url).toContain("eventId=");
+      return new Response(
+        JSON.stringify({ exportedAt: "2026-09-18T12:00:00.000Z" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }) as typeof fetch;
+    const api = createReplayBugApiClient({
+      baseUrl: "http://localhost:4001",
+      fetch: fakeFetch,
+    });
+    const result = await api.client.GET("/api/v1/issues/{issueId}/export", {
+      params: {
+        path: { issueId: "11111111-1111-4111-8111-111111111111" },
+        query: { eventId: "22222222-2222-4222-8222-222222222222" },
+      },
+    });
+    expect(result.response.status).toBe(200);
+    expect(result.data?.exportedAt).toBe("2026-09-18T12:00:00.000Z");
+  });
 });

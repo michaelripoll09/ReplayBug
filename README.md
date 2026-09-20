@@ -4,16 +4,13 @@ Developer observability for reproducible bugs: privacy-safe browser failure
 context, grouped issues, session timelines, and Playwright reproduction
 tests — on a self-hostable stack with no paid services.
 
-> **Status: Block 8 Playwright reproductions.** Everything from Block 7
-> (auth, tenancy, onboarding, dashboard shell, issue workflow API +
-> dashboard, SSE realtime, CLI-managed releases, source-map upload to
-> local artifact storage, worker symbolication, source-mapped grouping)
-> still holds — **and** occurrences now generate portable Playwright
-> reproduction tests: pure two-stage generator (plan IR → rendered spec,
-> `REPRODUCTION_GENERATOR_VERSION 1.0.0`), async pg-boss queue with
-> transactional outbox, idempotent request API, and a dashboard panel
-> (generate/copy/download/regenerate/history). Retention cleanup
-> and Ollama analysis are explicitly not built yet.
+> **Status: Block 9 operations and governance.** Everything from Blocks 7–8
+> still holds — and ReplayBug now adds workspace governance and invitations,
+> auditable settings, project retention, structured project/workspace deletion
+> with durable local-artifact cleanup, and authenticated issue JSON export.
+> These are local-first operational features; SMTP delivery, cloud storage,
+> hosted execution, billing, SSO, AI analysis, and deployment automation are
+> not implemented.
 
 ## What exists today
 
@@ -28,14 +25,10 @@ tests — on a self-hostable stack with no paid services.
   `docs/architecture/frontend.md`.
 - Dashboard issues workflow (Block 6): project overview with Recharts
   metrics (`?range=24h|7d|30d`), issue list with URL-driven
-  search/filter/sort/keyset pagination, issue detail with occurrence
-  selector (`?event=`), raw-stack-as-text evidence, embedded session
-  context and full session timelines, status/assignment/tags/comments with
-  activity history, sessions list/detail, notifications bell, and SSE
-  invalidation with honest Live/Reconnecting status. Viewer roles are
-  read-only in UI and 403 on direct API mutation. No reproduction
-  generation, AI panels, or source-mapped frames exist yet — none are
-  shown. See `docs/architecture/dashboard.md` and
+  search/filter/sort/keyset pagination, and issue detail with occurrence
+  selection, mapped/raw stack evidence, session context, timelines, and
+  collaboration controls. Viewer roles are read-only in UI and 403 on direct
+  API mutation. See `docs/architecture/dashboard.md` and
   `docs/architecture/realtime.md`.
 - Typed dashboard client at `packages/api-client`: `pnpm api:generate`
   prepares its workspace build closure (`turbo` `^build`), builds Fastify
@@ -52,10 +45,11 @@ tests — on a self-hostable stack with no paid services.
 - Better Auth email/password at `/api/auth/*` with PostgreSQL persistence,
   HttpOnly + Secure-in-production + SameSite Lax cookies, session rotation,
   strict dashboard CORS with credentials, and `GET /api/v1/me`
-- Workspaces (`GET /api/v1/workspaces`, `POST`, `GET one`, `PATCH`; no delete),
-  projects (nested + by-id + transactional idempotent delete), environments,
-  origins and public-key rotation with central RBAC (owner/admin/member/viewer)
-  and audit logs
+- Workspace governance: central `owner|admin|member|viewer` RBAC, member
+  management, owner-only ownership transfer and deletion, seven-day one-time
+  invitations bound to the recipient email, and paginated sanitized audit logs
+  in workspace settings; projects retain their per-workspace slug and have
+  owner/admin-managed retention and confirmed deletion
 - Browser SDK at `packages/sdk`: automatic exception, unhandled-rejection,
   console-error and failed-request capture, navigation/click/input breadcrumbs,
   privacy-safe defaults, batching, unload flush, retry, size budget
@@ -65,9 +59,9 @@ tests — on a self-hostable stack with no paid services.
   `(project_id, client_event_id)`, and one transaction per event writing
   session + event + outbox row
 - Worker at `apps/worker`: validated config, PostgreSQL health check,
-  pg-boss lifecycle, `replaybug.process-event` consumer, transactional outbox
-  dispatcher (`FOR UPDATE SKIP LOCKED`), reconciliation loop, bounded retries,
-  poison-job visibility, graceful shutdown
+  pg-boss lifecycle, event and reproduction dispatchers, invitation expiry,
+  retention cleanup, durable artifact-deletion outbox processing, bounded
+  retries, sanitized aggregate logs, and graceful drain on shutdown
 - Secret project tokens (`rb_sk_…`, owner/admin managed, one-time reveal,
   immediate revocation) and Bearer-only CLI auth, kept strictly separate
   from public ingest keys and dashboard sessions (see ADR `0002` and
@@ -78,8 +72,9 @@ tests — on a self-hostable stack with no paid services.
   identity metadata (see `docs/cli.md`)
 - Local artifact storage (`packages/artifacts`, `REPLAYBUG_ARTIFACT_DIR`,
   `replaybug_artifacts` Docker volume): atomic writes, server-generated
-  keys, API-write/worker-read, outage degradation (see
-  `docs/self-hosting.md` and `docs/architecture/source-maps.md`)
+  keys, API uploads, and worker reads for symbolication plus deletes for
+  durable cleanup; the shared worker mount is writable. Outages degrade
+  safely (see `docs/self-hosting.md` and `docs/architecture/source-maps.md`)
 - Worker symbolication before fingerprinting (`@jridgewell/trace-mapping`,
   no network, remote `sourceMappingURL` never fetched): mapped stacks by
   default with raw fallback, raw+mapped retention, per-position partial
@@ -114,25 +109,29 @@ tests — on a self-hostable stack with no paid services.
   test (`demo-uncaught-error` pageerror scenario passes locally via
   `scripts/verify-generated-test.ts`, loopback-only). See
   `docs/architecture/reproduction-generator.md`
-- Real Drizzle versioned migrations (`packages/db/drizzle`) and dev-only seed
-  (`pnpm db:seed`: demo user/workspace/project/prod env/dev env/localhost origin;
-  creates no tokens, releases, or artifact records)
+- Issue JSON export: an authenticated, single-issue download with allowlisted
+  issue data, an optional retained occurrence, raw/mapped stack views, bounded
+  timeline, and safe reproduction summaries (never telemetry payloads, comment
+  bodies, reproduction code, or secrets)
+- Real Drizzle versioned migrations through `0007_thin_omega_sentinel.sql`,
+  with empty-database and upgrade-boundary migration tests; dev-only seed
+  (`pnpm db:seed`) creates demo tenancy only
 - PostgreSQL 17 via Docker Compose with healthcheck and persistent volume
-- GitHub Actions CI (format, lint, typecheck, tests with PostgreSQL on 5544
-  plus hermetic temp-dir artifact storage, OpenAPI
-  drift check, build, Playwright Chromium E2E including the worker E2E and
-  the minified source-map full-flow E2E)
+- GitHub Actions CI runs format, lint, typecheck, tests with PostgreSQL on
+  5544 plus hermetic temp-dir artifact storage, OpenAPI drift check, build,
+  and Chromium E2E. Block 9 governance, retention, deletion, and export
+  behavior is covered by focused unit/integration tests; this is not a claim
+  of arbitrary remote execution or deployment coverage
 
 ## What is explicitly not built yet
 
-Retention cleanup (artifact blobs only
-accumulate — plan volume growth), invitation cleanup,
-Ollama analysis, GitHub OAuth and public demo mode. No AI analysis of
-failures, no hosted execution service — generated tests run locally by
-the developer.
-No fake metrics, charts or screenshots.
-See `` for the full
-plan and `docs/architecture/worker.md` for what the worker does today.
+SMTP invitation delivery, S3/object storage, Redis, billing, SSO, GitHub OAuth,
+Ollama or other AI analysis, hosted execution, public demo mode, and deployment
+automation are not built. Generated tests run locally by the developer.
+Docker Compose runs PostgreSQL by default; it is not a one-command production
+full-stack deployment. No fake metrics, charts, or screenshots.
+See `docs/architecture/worker.md` and `docs/self-hosting.md` for the current
+operational boundaries.
 
 ## Stack
 

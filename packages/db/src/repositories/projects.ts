@@ -1,8 +1,37 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { projects } from "../schema.js";
-import type { DbOrTx } from "./db-types.js";
+import type { DbOrTx, DbTransaction } from "./db-types.js";
+
+export const MIN_PROJECT_RETENTION_DAYS = 7;
+export const MAX_PROJECT_RETENTION_DAYS = 365;
+export const PROJECT_RETENTION_DAY_MS = 24 * 60 * 60 * 1000;
 
 export type ProjectRow = typeof projects.$inferSelect;
+
+/**
+ * Computes a project retention cutoff from a UTC instant.
+ *
+ * Dates are stored as instants, so subtracting whole UTC days is independent
+ * of the host timezone and matches the database retention predicate.
+ */
+export function computeProjectRetentionCutoff(
+  now: Date,
+  retentionDays: number,
+): Date {
+  if (Number.isNaN(now.getTime())) {
+    throw new RangeError("Retention cleanup now must be a valid date");
+  }
+  if (
+    !Number.isInteger(retentionDays) ||
+    retentionDays < MIN_PROJECT_RETENTION_DAYS ||
+    retentionDays > MAX_PROJECT_RETENTION_DAYS
+  ) {
+    throw new RangeError(
+      `Project retention days must be an integer between ${MIN_PROJECT_RETENTION_DAYS} and ${MAX_PROJECT_RETENTION_DAYS}`,
+    );
+  }
+  return new Date(now.getTime() - retentionDays * PROJECT_RETENTION_DAY_MS);
+}
 
 export async function insertProject(
   db: DbOrTx,
@@ -43,6 +72,33 @@ export async function findProjectById(
     .where(eq(projects.id, id))
     .limit(1);
   return rows[0];
+}
+
+/** Lock one project row before destructive lifecycle work. */
+export async function lockProjectById(
+  tx: DbTransaction,
+  id: string,
+): Promise<ProjectRow | undefined> {
+  const rows = await tx
+    .select()
+    .from(projects)
+    .where(eq(projects.id, id))
+    .limit(1)
+    .for("update");
+  return rows[0];
+}
+
+/** Lock all projects in deterministic id order for workspace deletion. */
+export async function lockProjectsByWorkspace(
+  tx: DbTransaction,
+  workspaceId: string,
+): Promise<ProjectRow[]> {
+  return tx
+    .select()
+    .from(projects)
+    .where(eq(projects.workspaceId, workspaceId))
+    .orderBy(asc(projects.id))
+    .for("update");
 }
 
 export async function findProjectByWorkspaceAndSlug(

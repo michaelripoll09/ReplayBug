@@ -48,6 +48,8 @@ export type Capability =
   | "notification:read-own"
   | "reproduction:read"
   | "reproduction:generate"
+  | "ai-analysis:read"
+  | "ai-analysis:request"
   | "workspace:manage-invitations"
   | "workspace:manage-members"
   | "workspace:read-audit"
@@ -151,6 +153,8 @@ const CAPABILITY_MIN_ROLE: Record<Capability, WorkspaceRole> = {
   "notification:read-own": "viewer",
   "reproduction:read": "viewer",
   "reproduction:generate": "member",
+  "ai-analysis:read": "viewer",
+  "ai-analysis:request": "member",
   "workspace:manage-invitations": "admin",
   "workspace:manage-members": "admin",
   "workspace:read-audit": "admin",
@@ -226,6 +230,14 @@ export function canGenerateReproductions(role: WorkspaceRole): boolean {
   return hasCapability(role, "reproduction:generate");
 }
 
+export function canReadAiAnalysis(role: WorkspaceRole): boolean {
+  return hasCapability(role, "ai-analysis:read");
+}
+
+export function canRequestAiAnalysis(role: WorkspaceRole): boolean {
+  return hasCapability(role, "ai-analysis:request");
+}
+
 export function canManageInvitations(role: WorkspaceRole): boolean {
   return hasCapability(role, "workspace:manage-invitations");
 }
@@ -280,6 +292,8 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "notification:read-own": true,
     "reproduction:read": true,
     "reproduction:generate": true,
+    "ai-analysis:read": true,
+    "ai-analysis:request": true,
     "workspace:manage-invitations": true,
     "workspace:manage-members": true,
     "workspace:read-audit": true,
@@ -310,6 +324,8 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "notification:read-own": true,
     "reproduction:read": true,
     "reproduction:generate": true,
+    "ai-analysis:read": true,
+    "ai-analysis:request": true,
     "workspace:manage-invitations": true,
     "workspace:manage-members": true,
     "workspace:read-audit": true,
@@ -340,6 +356,8 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "notification:read-own": true,
     "reproduction:read": true,
     "reproduction:generate": true,
+    "ai-analysis:read": true,
+    "ai-analysis:request": true,
     "workspace:manage-invitations": false,
     "workspace:manage-members": false,
     "workspace:read-audit": false,
@@ -370,6 +388,8 @@ export const RBAC_MATRIX: Record<WorkspaceRole, Record<Capability, boolean>> = {
     "notification:read-own": true,
     "reproduction:read": true,
     "reproduction:generate": false,
+    "ai-analysis:read": true,
+    "ai-analysis:request": false,
     "workspace:manage-invitations": false,
     "workspace:manage-members": false,
     "workspace:read-audit": false,

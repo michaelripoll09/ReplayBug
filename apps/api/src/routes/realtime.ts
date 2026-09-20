@@ -35,6 +35,16 @@ const errorJson = {
   },
 } as const;
 
+/**
+ * Update types whose payload identifiers include the AI analysis id.
+ * analysisId is projected only for these frames; other types never carry it.
+ */
+const AI_ANALYSIS_UPDATE_TYPES: ReadonlySet<ValidatedProjectUpdate["type"]> =
+  new Set<ValidatedProjectUpdate["type"]>([
+    "ai_analysis.ready",
+    "ai_analysis.failed",
+  ]);
+
 function toStreamPayload(update: ValidatedProjectUpdate): string {
   return JSON.stringify({
     version: update.version,
@@ -42,6 +52,10 @@ function toStreamPayload(update: ValidatedProjectUpdate): string {
     projectId: update.projectId,
     issueId: update.issueId,
     ...(update.eventId !== undefined ? { eventId: update.eventId } : {}),
+    ...(update.analysisId !== undefined &&
+    AI_ANALYSIS_UPDATE_TYPES.has(update.type)
+      ? { analysisId: update.analysisId }
+      : {}),
   });
 }
 

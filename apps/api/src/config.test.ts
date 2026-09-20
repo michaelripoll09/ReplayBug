@@ -54,6 +54,72 @@ describe("loadApiConfigFromEnv", () => {
   it("accepts disabled Ollama settings without breaking startup", () => {
     const config = loadApiConfigFromEnv(baseEnv);
     expect(config.ollamaUrl).toBeUndefined();
+    expect(config.ollamaModel).toBeUndefined();
+    expect(config.ollamaTimeoutMs).toBeUndefined();
+  });
+
+  it("parses optional Ollama timeout", () => {
+    const config = loadApiConfigFromEnv({
+      ...baseEnv,
+      REPLAYBUG_OLLAMA_TIMEOUT_MS: "45000",
+    });
+    expect(config.ollamaTimeoutMs).toBe(45000);
+  });
+
+  it("reports AI analysis disabled when Ollama env is absent", () => {
+    const config = loadApiConfigFromEnv(baseEnv);
+    expect(config.aiAnalysis).toEqual({
+      status: "disabled",
+      configured: false,
+    });
+  });
+
+  it("reports AI analysis misconfigured when only URL is set", () => {
+    const config = loadApiConfigFromEnv({
+      ...baseEnv,
+      REPLAYBUG_OLLAMA_URL: "http://localhost:11434",
+    });
+    expect(config.aiAnalysis).toEqual({
+      status: "misconfigured",
+      configured: false,
+    });
+  });
+
+  it("reports AI analysis misconfigured when only model is set", () => {
+    const config = loadApiConfigFromEnv({
+      ...baseEnv,
+      REPLAYBUG_OLLAMA_MODEL: "llama3.2",
+    });
+    expect(config.aiAnalysis).toEqual({
+      status: "misconfigured",
+      configured: false,
+    });
+  });
+
+  it("reports AI analysis configured with the sanitized model", () => {
+    const config = loadApiConfigFromEnv({
+      ...baseEnv,
+      REPLAYBUG_OLLAMA_URL: "http://localhost:11434",
+      REPLAYBUG_OLLAMA_MODEL: "llama3.2",
+    });
+    expect(config.aiAnalysis).toEqual({
+      status: "configured",
+      configured: true,
+      model: "llama3.2",
+    });
+  });
+
+  it("invalid Ollama timeout does not fail startup and yields misconfigured", () => {
+    const config = loadApiConfigFromEnv({
+      ...baseEnv,
+      REPLAYBUG_OLLAMA_URL: "http://localhost:11434",
+      REPLAYBUG_OLLAMA_MODEL: "llama3.2",
+      REPLAYBUG_OLLAMA_TIMEOUT_MS: "500",
+    });
+    expect(config.aiAnalysis).toEqual({
+      status: "misconfigured",
+      configured: false,
+    });
   });
 
   it("defaults the artifact per-file cap to 25 MiB", () => {

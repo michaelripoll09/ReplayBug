@@ -8,6 +8,7 @@ import {
   canManageOrigins,
   canManageProject,
   canManageWorkspace,
+  canRequestAiAnalysis,
   canRotateKeys,
   canUpdateIssueStatus,
   isReadOnly,
@@ -55,5 +56,12 @@ describe("RBAC UX layer (mirrors backend owner/admin/member/viewer)", () => {
     expect(canAssignIssue("viewer")).toBe(false);
     expect(canManageIssueTags("viewer")).toBe(false);
     expect(canCommentOnIssue("viewer")).toBe(false);
+  });
+
+  it("lets members and up request AI analysis while viewers only read", () => {
+    for (const role of ["owner", "admin", "member"] as const) {
+      expect(canRequestAiAnalysis(role)).toBe(true);
+    }
+    expect(canRequestAiAnalysis("viewer")).toBe(false);
   });
 });

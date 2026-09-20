@@ -45,6 +45,7 @@ import type {
   UserRepo,
   WorkspaceRepo,
 } from "@replaybug/db";
+import type { AiAnalysisRepo } from "@replaybug/db";
 
 function iso(value: Date | string): string {
   return value instanceof Date
@@ -883,5 +884,97 @@ export function toNotificationDto(
     issueId: row.issueId,
     readAt: row.readAt === null ? null : iso(row.readAt),
     createdAt: iso(row.createdAt),
+  };
+}
+
+type AiAnalysisRow = AiAnalysisRepo.AiAnalysisRow;
+
+export function toAiAnalysisRequestedByDto(
+  row: UserRepo.UserRow | undefined,
+): { id: string; email: string; name: string } | null {
+  if (row === undefined) {
+    return null;
+  }
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+  };
+}
+
+export function toAiAnalysisSummaryDto(
+  row: AiAnalysisRow,
+  requestedBy: UserRepo.UserRow | undefined,
+): {
+  id: string;
+  eventId: string | null;
+  model: string;
+  status: "pending" | "ready" | "failed";
+  analysisVersion: string;
+  requestedBy: { id: string; email: string; name: string } | null;
+  createdAt: string;
+  completedAt: string | null;
+} {
+  return {
+    id: row.id,
+    eventId: row.eventId,
+    model: row.model,
+    status:
+      row.status === "pending" ||
+      row.status === "ready" ||
+      row.status === "failed"
+        ? row.status
+        : "pending",
+    analysisVersion: row.analysisVersion,
+    requestedBy: toAiAnalysisRequestedByDto(requestedBy),
+    createdAt: iso(row.createdAt),
+    completedAt: row.completedAt === null ? null : iso(row.completedAt),
+  };
+}
+
+export function toAiAnalysisDetailDto(
+  row: AiAnalysisRow,
+  requestedBy: UserRepo.UserRow | undefined,
+): {
+  id: string;
+  issueId: string;
+  eventId: string | null;
+  model: string;
+  status: "pending" | "ready" | "failed";
+  analysisVersion: string;
+  requestedBy: { id: string; email: string; name: string } | null;
+  createdAt: string;
+  completedAt: string | null;
+  summary: string | null;
+  suspectedCause: string | null;
+  evidence: Array<{ ref: string; reason: string }> | null;
+  reproductionSteps: string[] | null;
+  limitations: string[] | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+} {
+  const status =
+    row.status === "pending" ||
+    row.status === "ready" ||
+    row.status === "failed"
+      ? row.status
+      : "pending";
+  return {
+    id: row.id,
+    issueId: row.issueId,
+    eventId: row.eventId,
+    model: row.model,
+    status,
+    analysisVersion: row.analysisVersion,
+    requestedBy: toAiAnalysisRequestedByDto(requestedBy),
+    createdAt: iso(row.createdAt),
+    completedAt: row.completedAt === null ? null : iso(row.completedAt),
+    summary: row.summary,
+    suspectedCause: row.suspectedCause,
+    evidence: row.evidenceJson,
+    reproductionSteps: row.reproductionStepsJson,
+    limitations: row.limitationsJson,
+    errorCode: row.errorCode,
+    errorMessage: row.errorMessage,
   };
 }

@@ -50,6 +50,7 @@ async function main(): Promise<void> {
       artifactMaxFileBytes: 25 * 1024 * 1024,
       artifactPreflightMaxEntries: 500,
       artifactAggregateMaxBytes: 250 * 1024 * 1024,
+      aiAnalysis: { status: "disabled", configured: false },
     },
     checkDatabase: async () => true,
   });

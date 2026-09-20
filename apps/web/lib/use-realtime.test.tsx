@@ -180,4 +180,79 @@ describe("useProjectRealtime", () => {
     expect(seen).toContainEqual(["notifications"]);
     expect(seen).toHaveLength(2);
   });
+
+  it("maps ai_analysis.ready to history + analysis + activity + notifications", () => {
+    const { client, wrapper } = setup();
+    const seen: unknown[][] = [];
+    vi.spyOn(client, "invalidateQueries").mockImplementation((async (filters: {
+      queryKey?: unknown;
+    }) => {
+      seen.push(filters.queryKey as unknown[]);
+    }) as typeof client.invalidateQueries);
+    renderHook(
+      () =>
+        useProjectRealtime(PROJECT, {
+          createEventSource: (url) => new FakeEventSource(url),
+        }),
+      { wrapper },
+    );
+    const source = FakeEventSource.instances[0];
+    const analysisId = "44444444-4444-4444-8444-444444444444";
+    act(() => {
+      source?.emitNamed(
+        "project-update",
+        JSON.stringify({
+          version: 1,
+          type: "ai_analysis.ready",
+          projectId: PROJECT,
+          issueId: ISSUE,
+          analysisId,
+        }),
+      );
+    });
+    expect(seen).toContainEqual(["issues", ISSUE, "ai-analyses"]);
+    expect(seen).toContainEqual(["ai-analyses", analysisId]);
+    expect(seen).toContainEqual(["issues", ISSUE, "activity"]);
+    expect(seen).toContainEqual(["notifications"]);
+    expect(seen).toHaveLength(4);
+    for (const key of seen) {
+      expect(key.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("maps ai_analysis.failed to the same four targeted keys", () => {
+    const { client, wrapper } = setup();
+    const seen: unknown[][] = [];
+    vi.spyOn(client, "invalidateQueries").mockImplementation((async (filters: {
+      queryKey?: unknown;
+    }) => {
+      seen.push(filters.queryKey as unknown[]);
+    }) as typeof client.invalidateQueries);
+    renderHook(
+      () =>
+        useProjectRealtime(PROJECT, {
+          createEventSource: (url) => new FakeEventSource(url),
+        }),
+      { wrapper },
+    );
+    const source = FakeEventSource.instances[0];
+    const analysisId = "55555555-5555-4555-8555-555555555555";
+    act(() => {
+      source?.emitNamed(
+        "project-update",
+        JSON.stringify({
+          version: 1,
+          type: "ai_analysis.failed",
+          projectId: PROJECT,
+          issueId: ISSUE,
+          analysisId,
+        }),
+      );
+    });
+    expect(seen).toContainEqual(["issues", ISSUE, "ai-analyses"]);
+    expect(seen).toContainEqual(["ai-analyses", analysisId]);
+    expect(seen).toContainEqual(["issues", ISSUE, "activity"]);
+    expect(seen).toContainEqual(["notifications"]);
+    expect(seen).toHaveLength(4);
+  });
 });

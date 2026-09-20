@@ -588,8 +588,8 @@ describe("migrations against real PostgreSQL", () => {
         `SELECT COUNT(*)::int AS count FROM drizzle.__drizzle_migrations`,
       );
       // One journal row per migration file
-      // (0000 through 0007), never duplicated.
-      expect(journal.rows[0]?.count).toBe(8);
+      // (0000 through 0008), never duplicated.
+      expect(journal.rows[0]?.count).toBe(9);
     });
   });
 
@@ -1337,6 +1337,215 @@ describe("migrations against real PostgreSQL", () => {
         `SELECT COUNT(*)::int AS count FROM reproduction_generation_outbox`,
       );
       expect(orphanOutbox.rows[0]?.count).toBe(0);
+    });
+  });
+
+  it("upgrades Block 9 data to Block 10 without losing retained history", async () => {
+    const name = await createTempDatabase();
+    const databaseUrl = tempDatabaseUrl(name);
+
+    // 1. Apply exactly the Block 9 schema (0000 through 0007).
+    const block9Folder = await buildPartialMigrationsFolder(7);
+    await runMigrations(databaseUrl, block9Folder);
+
+    const workspaceId = "11111111-1111-4111-8111-111111111111";
+    const projectId = "22222222-2222-4222-8222-222222222222";
+    const sessionId = "33333333-3333-4333-8333-333333333333";
+    const eventId = "44444444-4444-4444-8444-444444444444";
+    const issueId = "55555555-5555-4555-8555-555555555555";
+    const releaseId = "66666666-6666-4666-8666-666666666666";
+    const reproductionId = "77777777-7777-4777-8777-777777777777";
+    const analysisId = "88888888-8888-4888-8888-888888888888";
+
+    // 2. Representative Block 9 retained state: governance/invitation/audit/
+    // deletion rows plus the existing release, source map, event, issue, and
+    // reproduction relationships that Block 10 must not disturb.
+    await withPool(databaseUrl, async (pool) => {
+      await pool.query(
+        `INSERT INTO "user" ("id", "name", "email")
+         VALUES ('fixture-user-9', 'Fixture User', 'fixture9@example.com')`,
+      );
+      await pool.query(
+        `INSERT INTO workspaces ("id", "name", "slug", "created_by_user_id")
+         VALUES ($1, 'Fixture WS', 'fixture-ws-9', 'fixture-user-9')`,
+        [workspaceId],
+      );
+      await pool.query(
+        `INSERT INTO projects ("id", "workspace_id", "name", "slug")
+         VALUES ($1, $2, 'Fixture Project', 'fixture-project-9')`,
+        [projectId, workspaceId],
+      );
+      await pool.query(
+        `INSERT INTO workspace_invitations
+           ("workspace_id", "email", "role", "token_hash", "token_prefix",
+            "expires_at", "created_by_user_id")
+         VALUES ($1, 'invitee@example.com', 'member',
+                 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                 'aaaaaaaa', now() + interval '1 day', 'fixture-user-9')`,
+        [workspaceId],
+      );
+      await pool.query(
+        `INSERT INTO audit_logs
+           ("workspace_id", "project_id", "actor_user_id", "action")
+         VALUES ($1, $2, 'fixture-user-9', 'project.retention_changed')`,
+        [workspaceId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO artifact_deletion_outbox ("project_id", "storage_key")
+         VALUES ($1, 'fixtures/block9/source-map')`,
+        [projectId],
+      );
+      await pool.query(
+        `INSERT INTO releases ("id", "project_id", "version", "commit_sha")
+         VALUES ($1, $2, 'web@9.0.0', 'abcdef1')`,
+        [releaseId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO release_artifacts
+           ("release_id", "artifact_path", "storage_key", "content_hash",
+            "size_bytes", "artifact_type")
+         VALUES ($1, 'assets/app.js.map', 'fixtures/block9/app.js.map',
+                 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                 2048, 'source_map')`,
+        [releaseId],
+      );
+      await pool.query(
+        `INSERT INTO telemetry_sessions
+           ("id", "project_id", "sdk_session_id", "environment", "release",
+            "initial_url", "sdk_version")
+         VALUES ($1, $2, 'sdk-session-9', 'production', 'web@9.0.0',
+                 'https://example.com/', 'test-sdk@0.0.0')`,
+        [sessionId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO issues
+           ("id", "project_id", "fingerprint", "fingerprint_signature",
+            "type", "title", "normalized_message", "severity",
+            "first_seen_at", "last_seen_at")
+         VALUES ($1, $2,
+                 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                 'TypeError: fixture', 'exception', 'TypeError: fixture',
+                 'TypeError: fixture', 'error', now(), now())`,
+        [issueId, projectId],
+      );
+      await pool.query(
+        `INSERT INTO events
+           ("id", "project_id", "telemetry_session_id", "client_event_id",
+            "sequence_number", "event_type", "occurred_at", "environment",
+            "payload_json", "issue_id", "processing_state", "symbolication_json")
+         VALUES ($1, $2, $3, 'client-event-9', 1, 'exception', now(),
+                 'production', '{"values":[{"type":"TypeError"}]}'::jsonb,
+                 $4, 'processed',
+                 '{"status":"mapped","mappedFrameCount":1}'::jsonb)`,
+        [eventId, projectId, sessionId, issueId],
+      );
+      await pool.query(
+        `INSERT INTO reproduction_tests
+           ("id", "issue_id", "event_id", "generated_by_user_id",
+            "generator_version", "status", "idempotency_key_hash")
+         VALUES ($1, $2, $3, 'fixture-user-9', '1.0.0', 'pending',
+                 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd')`,
+        [reproductionId, issueId, eventId],
+      );
+      await pool.query(
+        `INSERT INTO reproduction_generation_outbox ("reproduction_id") VALUES ($1)`,
+        [reproductionId],
+      );
+    });
+
+    // 3. Apply only the new migration from the real latest migration folder.
+    await runMigrations(databaseUrl, MIGRATIONS_DIR);
+
+    // 4. Retained Block 9 rows survive, and the new AI lifecycle is usable.
+    await withPool(databaseUrl, async (pool) => {
+      const invitation = await pool.query(
+        `SELECT role, accepted_at FROM workspace_invitations
+         WHERE workspace_id = $1 AND email = 'invitee@example.com'`,
+        [workspaceId],
+      );
+      expect(invitation.rows[0]?.role).toBe("member");
+      expect(invitation.rows[0]?.accepted_at).toBeNull();
+
+      const audit = await pool.query(
+        `SELECT action FROM audit_logs
+         WHERE project_id = $1 AND action = 'project.retention_changed'`,
+        [projectId],
+      );
+      expect(audit.rows).toHaveLength(1);
+
+      const deletionOutbox = await pool.query(
+        `SELECT storage_key FROM artifact_deletion_outbox WHERE project_id = $1`,
+        [projectId],
+      );
+      expect(deletionOutbox.rows[0]?.storage_key).toBe(
+        "fixtures/block9/source-map",
+      );
+
+      const artifact = await pool.query(
+        `SELECT artifact_type FROM release_artifacts WHERE release_id = $1`,
+        [releaseId],
+      );
+      expect(artifact.rows[0]?.artifact_type).toBe("source_map");
+
+      const event = await pool.query(
+        `SELECT issue_id, processing_state, symbolication_json
+         FROM events WHERE id = $1`,
+        [eventId],
+      );
+      expect(event.rows[0]?.issue_id).toBe(issueId);
+      expect(event.rows[0]?.processing_state).toBe("processed");
+      expect(
+        (event.rows[0]?.symbolication_json as { status?: string })?.status,
+      ).toBe("mapped");
+
+      const reproduction = await pool.query(
+        `SELECT status FROM reproduction_tests WHERE id = $1`,
+        [reproductionId],
+      );
+      expect(reproduction.rows[0]?.status).toBe("pending");
+      const reproductionOutbox = await pool.query(
+        `SELECT reproduction_id FROM reproduction_generation_outbox
+         WHERE reproduction_id = $1`,
+        [reproductionId],
+      );
+      expect(reproductionOutbox.rows).toHaveLength(1);
+
+      await pool.query(
+        `INSERT INTO ai_analyses
+           ("id", "issue_id", "event_id", "requested_by_user_id", "model",
+            "analysis_version", "idempotency_key_hash", "status")
+         VALUES ($1, $2, $3, 'fixture-user-9', 'qwen2.5:7b', '1.0.0',
+                 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                 'pending')`,
+        [analysisId, issueId, eventId],
+      );
+      await pool.query(
+        `INSERT INTO ai_analysis_outbox ("analysis_id") VALUES ($1)`,
+        [analysisId],
+      );
+      await pool.query(
+        `UPDATE ai_analyses
+         SET status = 'ready',
+             summary = 'The retained event reaches the mapped frame.',
+             suspected_cause = 'A fixture lifecycle validates the migration.',
+             evidence_json = '[{"ref":"stack:1","reason":"mapped frame"}]'::jsonb,
+             reproduction_steps_json = '["Open the fixture"]'::jsonb,
+             limitations_json = '["Migration fixture only"]'::jsonb,
+             completed_at = now()
+         WHERE id = $1`,
+        [analysisId],
+      );
+      const analysis = await pool.query(
+        `SELECT status, completed_at FROM ai_analyses WHERE id = $1`,
+        [analysisId],
+      );
+      expect(analysis.rows[0]?.status).toBe("ready");
+      expect(analysis.rows[0]?.completed_at).toBeInstanceOf(Date);
+      const analysisOutbox = await pool.query(
+        `SELECT analysis_id FROM ai_analysis_outbox WHERE analysis_id = $1`,
+        [analysisId],
+      );
+      expect(analysisOutbox.rows).toHaveLength(1);
     });
   });
 });

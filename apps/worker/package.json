@@ -16,6 +16,7 @@
   "dependencies": {
     "@jridgewell/trace-mapping": "0.3.31",
     "@replaybug/artifacts": "workspace:*",
+    "@replaybug/contracts": "workspace:*",
     "@replaybug/db": "workspace:*",
     "@replaybug/observability": "workspace:*",
     "@replaybug/reproducer": "workspace:*",

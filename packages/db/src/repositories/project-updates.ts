@@ -17,7 +17,9 @@ export type ProjectUpdateType =
   | "assignment.changed"
   | "tags.changed"
   | "reproduction.ready"
-  | "reproduction.failed";
+  | "reproduction.failed"
+  | "ai_analysis.ready"
+  | "ai_analysis.failed";
 
 export interface ProjectUpdateNotification {
   version: typeof PROJECT_UPDATE_VERSION;
@@ -36,6 +38,12 @@ export interface ProjectUpdateNotification {
    * carries ids only, never code or secrets.
    */
   reproductionId?: string;
+  /**
+   * AI analysis this update refers to. Only present on
+   * ai_analysis.ready / ai_analysis.failed. Kept tiny: pg_notify carries ids
+   * only, never prompts, evidence, or model output.
+   */
+  analysisId?: string;
 }
 
 /**

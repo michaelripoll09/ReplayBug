@@ -58,6 +58,18 @@ export default defineConfig({
         REPLAYBUG_ARTIFACT_DIR:
           process.env["REPLAYBUG_ARTIFACT_DIR"] ??
           join(tmpdir(), "replaybug-web-e2e-artifacts"),
+        // Block 10 optional local AI analysis. The API only *reports*
+        // capability and persists requests — it never contacts a provider —
+        // so this URL is a never-dialed placeholder; the e2e/ai-analysis
+        // worker receives its own ephemeral mock-Ollama URL. The model name
+        // is real configuration and must match E2E_OLLAMA_MODEL in
+        // e2e/ai-analysis.spec.ts.
+        REPLAYBUG_OLLAMA_URL:
+          process.env["REPLAYBUG_OLLAMA_URL"] ?? "http://127.0.0.1:45999",
+        REPLAYBUG_OLLAMA_MODEL:
+          process.env["REPLAYBUG_OLLAMA_MODEL"] ?? "e2e-mock-ollama",
+        REPLAYBUG_OLLAMA_TIMEOUT_MS:
+          process.env["REPLAYBUG_OLLAMA_TIMEOUT_MS"] ?? "15000",
         LOG_LEVEL: "silent",
       },
     },

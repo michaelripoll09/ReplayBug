@@ -47,6 +47,8 @@ export {
   eventProcessingOutbox,
   reproductionTests,
   reproductionGenerationOutbox,
+  aiAnalyses,
+  aiAnalysisOutbox,
   artifactDeletionOutbox,
   rateLimitBuckets,
   processingStateEnum,
@@ -200,6 +202,7 @@ export * as OccurrenceRepo from "./repositories/occurrences.js";
 export * as EventProcessingRepo from "./repositories/event-processing.js";
 export * as OutboxRepo from "./repositories/outbox.js";
 export * as ReproductionRepo from "./repositories/reproductions.js";
+export * as AiAnalysisRepo from "./repositories/ai-analyses.js";
 export * as NotificationRepo from "./repositories/notifications.js";
 export * as ProjectUpdatesRepo from "./repositories/project-updates.js";
 export {
@@ -328,6 +331,33 @@ export type {
   CreateReproductionActivityInput,
   PendingReproductionOutboxItem,
 } from "./repositories/reproductions.js";
+export {
+  createAiAnalysisRequest,
+  findAiAnalysisByIdInIssue,
+  encodeAiAnalysisCursor,
+  decodeAiAnalysisCursor,
+  listIssueAiAnalyses,
+  findPendingAiAnalysisById,
+  lockPendingAiAnalysisById,
+  markAiAnalysisReady,
+  markAiAnalysisFailed,
+  claimPendingAiAnalysisOutboxBatch,
+  claimStaleAiAnalysisOutboxBatch,
+  listStaleAiAnalysisOutbox,
+  markAiAnalysisOutboxDispatched,
+  recordAiAnalysisOutboxFailure,
+} from "./repositories/ai-analyses.js";
+export type {
+  AiAnalysisRow,
+  AiAnalysisOutboxRow,
+  CreateAiAnalysisRequestInput,
+  CreateAiAnalysisRequestResult,
+  AiAnalysisCursor,
+  ListIssueAiAnalysesInput,
+  ListIssueAiAnalysesResult,
+  MarkAiAnalysisFailedInput,
+  PendingAiAnalysisOutboxItem,
+} from "./repositories/ai-analyses.js";
 export {
   lockEventForProcessing,
   getEventForSymbolication,

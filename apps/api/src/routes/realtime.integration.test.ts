@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MembershipRepo, type DbClient } from "@replaybug/db";
 import { buildApp } from "../app.js";
 import type { AppInstance } from "../instance.js";
+import { validateProjectUpdate } from "../realtime/broker.js";
 import {
   cookiesHeader,
   createTestDbClient,
@@ -331,6 +332,159 @@ describe("realtime SSE integration (real HTTP + PG)", () => {
     } finally {
       await streamA.cancel();
       await streamB.cancel();
+    }
+  }, 30000);
+
+  it("forwards identifier-only ai_analysis updates and validates their ids", async () => {
+    const { memberCookie, projectA, issueId } = await setup();
+    const stream = await openStream(projectA, memberCookie);
+    try {
+      const ready = await collectFrames(stream.reader, 1, 5000);
+      expect(ready[0]).toMatchObject({ event: "ready" });
+
+      const readyAnalysisId = randomUUID();
+      const failedAnalysisId = randomUUID();
+      const eventId = randomUUID();
+      await dbClient.pool.query(
+        `SELECT pg_notify('replaybug_project_updates', $1)`,
+        [
+          JSON.stringify({
+            version: 1,
+            type: "ai_analysis.ready",
+            projectId: projectA,
+            issueId,
+            eventId,
+            analysisId: readyAnalysisId,
+          }),
+        ],
+      );
+      await dbClient.pool.query(
+        `SELECT pg_notify('replaybug_project_updates', $1)`,
+        [
+          JSON.stringify({
+            version: 1,
+            type: "ai_analysis.failed",
+            projectId: projectA,
+            issueId,
+            analysisId: failedAnalysisId,
+          }),
+        ],
+      );
+
+      const frames = await collectFrames(stream.reader, 3, 10000);
+      const updates = frames.filter((f) => f.event === "project-update");
+      expect(updates).toHaveLength(2);
+      const payloads = updates.map(
+        (update) => JSON.parse(update.data) as Record<string, unknown>,
+      );
+      const readyPayload = payloads.find(
+        (payload) => payload["type"] === "ai_analysis.ready",
+      );
+      const failedPayload = payloads.find(
+        (payload) => payload["type"] === "ai_analysis.failed",
+      );
+
+      // The streamed frame carries the validated analysisId so clients can
+      // invalidate exactly that analysis. The event id survives too; the
+      // field set stays identifier-only.
+      expect(readyPayload).toMatchObject({
+        version: 1,
+        type: "ai_analysis.ready",
+        projectId: projectA,
+        issueId,
+        eventId,
+        analysisId: readyAnalysisId,
+      });
+      expect(Object.keys(readyPayload ?? {}).sort()).toEqual(
+        [
+          "analysisId",
+          "eventId",
+          "issueId",
+          "projectId",
+          "type",
+          "version",
+        ].sort(),
+      );
+      expect(failedPayload).toMatchObject({
+        version: 1,
+        type: "ai_analysis.failed",
+        projectId: projectA,
+        issueId,
+        analysisId: failedAnalysisId,
+      });
+      expect(Object.keys(failedPayload ?? {}).sort()).toEqual(
+        ["analysisId", "issueId", "projectId", "type", "version"].sort(),
+      );
+      for (const payload of payloads) {
+        // Identifier-only: no result text, evidence, or provider output.
+        expect(payload).not.toHaveProperty("summary");
+        expect(payload).not.toHaveProperty("evidence");
+        expect(payload).not.toHaveProperty("suspectedCause");
+        expect(payload).not.toHaveProperty("content");
+      }
+    } finally {
+      await stream.cancel();
+    }
+
+    // The broker accepts both AI update types with an identifier-only payload.
+    expect(
+      validateProjectUpdate({
+        version: 1,
+        type: "ai_analysis.failed",
+        projectId: projectA,
+        issueId,
+        analysisId: randomUUID(),
+      }),
+    ).toMatchObject({ version: 1, type: "ai_analysis.failed" });
+    expect(
+      validateProjectUpdate({
+        version: 1,
+        type: "ai_analysis.ready",
+        projectId: projectA,
+        issueId,
+        analysisId: "not-a-uuid",
+      }),
+    ).toBeNull();
+  }, 30000);
+
+  it("projects analysisId only for ai_analysis frames", async () => {
+    const { memberCookie, projectA, issueId } = await setup();
+    const stream = await openStream(projectA, memberCookie);
+    try {
+      const ready = await collectFrames(stream.reader, 1, 5000);
+      expect(ready[0]).toMatchObject({ event: "ready" });
+
+      // A non-AI type that somehow carries an analysis id must not leak it:
+      // the projection forwards analysisId only for the AI analysis frames.
+      await dbClient.pool.query(
+        `SELECT pg_notify('replaybug_project_updates', $1)`,
+        [
+          JSON.stringify({
+            version: 1,
+            type: "issue.updated",
+            projectId: projectA,
+            issueId,
+            analysisId: randomUUID(),
+          }),
+        ],
+      );
+
+      const frames = await collectFrames(stream.reader, 2, 10000);
+      const updates = frames.filter((f) => f.event === "project-update");
+      expect(updates).toHaveLength(1);
+      const payload = JSON.parse(updates[0]?.data ?? "{}") as Record<
+        string,
+        unknown
+      >;
+      expect(payload).toMatchObject({
+        version: 1,
+        type: "issue.updated",
+        projectId: projectA,
+        issueId,
+      });
+      expect(payload).not.toHaveProperty("analysisId");
+    } finally {
+      await stream.cancel();
     }
   }, 30000);
 

@@ -4,13 +4,14 @@ Developer observability for reproducible bugs: privacy-safe browser failure
 context, grouped issues, session timelines, and Playwright reproduction
 tests — on a self-hostable stack with no paid services.
 
-> **Status: Block 9 operations and governance.** Everything from Blocks 7–8
-> still holds — and ReplayBug now adds workspace governance and invitations,
-> auditable settings, project retention, structured project/workspace deletion
-> with durable local-artifact cleanup, and authenticated issue JSON export.
-> These are local-first operational features; SMTP delivery, cloud storage,
-> hosted execution, billing, SSO, AI analysis, and deployment automation are
-> not implemented.
+> **Status: Block 10 optional local AI analysis.** Everything from Blocks 7–9
+> still holds — and ReplayBug now adds optional, local-first issue analysis
+> through an operator-configured Ollama endpoint: bounded sanitized evidence,
+> strict structured-output validation, immutable analysis history, and
+> hypothesis-labeled results. ReplayBug never requires AI or a hosted model
+> provider. SMTP delivery, cloud storage, hosted execution, billing, SSO,
+> hosted or paid LLM integration, and deployment automation are not
+> implemented.
 
 ## What exists today
 
@@ -113,7 +114,22 @@ tests — on a self-hostable stack with no paid services.
   issue data, an optional retained occurrence, raw/mapped stack views, bounded
   timeline, and safe reproduction summaries (never telemetry payloads, comment
   bodies, reproduction code, or secrets)
-- Real Drizzle versioned migrations through `0007_thin_omega_sentinel.sql`,
+- Optional local AI analysis (Block 10): authenticated request, per-issue
+  history, and detail endpoints (`POST /api/v1/events/:eventId/ai-analyses`
+  with an `Idempotency-Key`), plus a capability DTO that never exposes the
+  provider URL. Evidence is a bounded sanitized bundle with deterministic
+  `issue:message`, `stack:<n>`, `timeline:<id>`, `network:<id>` and
+  `release:current` refs; output is strict Zod-validated JSON with one
+  structured retry and no raw-output persistence; a durable outbox drives the
+  `replaybug.generate-ai-analysis` job with transient-vs-deterministic
+  retries. The issue-detail panel shows the mandatory hypothesis disclaimer,
+  "Suspected cause", evidence links, suggestions-only steps, and honest failed
+  or disabled states. See `docs/architecture/ai-analysis.md`
+- Core ReplayBug does **not** require AI: ingest, grouping, issue detail,
+  timelines, retention, deletion, and deterministic Playwright reproduction
+  keep working with Ollama disabled, misconfigured, or offline, and
+  `/health/ready` never depends on AI
+- Real Drizzle versioned migrations through `0008_ai_analyses.sql`,
   with empty-database and upgrade-boundary migration tests; dev-only seed
   (`pnpm db:seed`) creates demo tenancy only
 - PostgreSQL 17 via Docker Compose with healthcheck and persistent volume
@@ -126,12 +142,16 @@ tests — on a self-hostable stack with no paid services.
 ## What is explicitly not built yet
 
 SMTP invitation delivery, S3/object storage, Redis, billing, SSO, GitHub OAuth,
-Ollama or other AI analysis, hosted execution, public demo mode, and deployment
-automation are not built. Generated tests run locally by the developer.
-Docker Compose runs PostgreSQL by default; it is not a one-command production
-full-stack deployment. No fake metrics, charts, or screenshots.
-See `docs/architecture/worker.md` and `docs/self-hosting.md` for the current
-operational boundaries.
+hosted or paid LLM integration (no OpenAI/Anthropic/Gemini, no hosted model
+API), hosted execution, public demo mode, and deployment automation are not
+built. Optional AI analysis is local-only: it never downloads a model, never
+uses a hosted provider, and is never required — core ReplayBug does not require
+AI. Generated tests run locally by the developer.
+Docker Compose runs PostgreSQL by default (no Ollama service, no AI
+dependency); it is not a one-command production full-stack deployment. No fake
+metrics, charts, or screenshots.
+See `docs/architecture/worker.md`, `docs/architecture/ai-analysis.md` and
+`docs/self-hosting.md` for the current operational boundaries.
 
 ## Stack
 

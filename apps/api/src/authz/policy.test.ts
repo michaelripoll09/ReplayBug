@@ -74,6 +74,29 @@ describe("capability policy", () => {
     }
   });
 
+  it("viewer can read AI analyses but cannot request them", () => {
+    expect(hasCapability("viewer", "ai-analysis:read")).toBe(true);
+    expect(hasCapability("viewer", "ai-analysis:request")).toBe(false);
+    expect(RBAC_MATRIX.viewer["ai-analysis:read"]).toBe(true);
+    expect(RBAC_MATRIX.viewer["ai-analysis:request"]).toBe(false);
+  });
+
+  it("member can read and request AI analyses", () => {
+    expect(hasCapability("member", "ai-analysis:read")).toBe(true);
+    expect(hasCapability("member", "ai-analysis:request")).toBe(true);
+    expect(RBAC_MATRIX.member["ai-analysis:read"]).toBe(true);
+    expect(RBAC_MATRIX.member["ai-analysis:request"]).toBe(true);
+  });
+
+  it("owner/admin can read and request AI analyses", () => {
+    for (const role of ["owner", "admin"] as const) {
+      expect(hasCapability(role, "ai-analysis:read")).toBe(true);
+      expect(hasCapability(role, "ai-analysis:request")).toBe(true);
+      expect(RBAC_MATRIX[role]["ai-analysis:read"]).toBe(true);
+      expect(RBAC_MATRIX[role]["ai-analysis:request"]).toBe(true);
+    }
+  });
+
   it("member manages issues but viewer is read-only", () => {
     expect(hasCapability("member", "issue:read")).toBe(true);
     expect(hasCapability("member", "issue:update-status")).toBe(true);

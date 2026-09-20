@@ -17,8 +17,13 @@ import {
   GENERATE_REPRODUCTION_QUEUE,
   generateReproductionQueueOptions,
 } from "./queues/reproduction.js";
+import {
+  GENERATE_AI_ANALYSIS_QUEUE,
+  generateAiAnalysisQueueOptions,
+} from "./queues/ai-analysis.js";
 import { createProcessEventJobHandler } from "./processors/process-event-handler.js";
 import { createGenerateReproductionJobHandler } from "./processors/generate-reproduction.js";
+import { createGenerateAiAnalysisJobHandler } from "./processors/process-ai-analysis.js";
 import { startOutboxDispatcher } from "./dispatcher/outbox-dispatcher.js";
 import { startOutboxReconciliation } from "./reconciliation/outbox-reconciliation.js";
 import { startExpiredInvitationCleanupRunner } from "./cleanup/invitations.js";
@@ -29,11 +34,17 @@ import {
   startReproductionDispatcher,
   startReproductionReconciliation,
 } from "./dispatcher/reproduction-dispatcher.js";
+import {
+  createPgBossAiAnalysisPublisher,
+  startAiAnalysisDispatcher,
+  startAiAnalysisReconciliation,
+} from "./dispatcher/ai-analysis-dispatcher.js";
 import type { ProcessEventPublisher } from "./dispatcher/publish-batch.js";
 
 /**
- * Worker composition root: pg-boss, the process-event + generate-reproduction
- * consumers, outbox loops, and bounded invitation/retention cleanup. Ordering on startup is deliberate —
+ * Worker composition root: pg-boss, the process-event +
+ * generate-reproduction + generate-ai-analysis consumers, outbox loops, and
+ * bounded invitation/retention cleanup. Ordering on startup is deliberate —
  * pg-boss schema/queues first, then consumers, then dispatching — and on
  * shutdown the reverse: stop claiming work, wait for in-flight jobs, then
  * close pg-boss.
@@ -115,9 +126,14 @@ export async function startWorkerRuntime(
     GENERATE_REPRODUCTION_QUEUE,
     generateReproductionQueueOptions(config),
   );
+  await boss.createQueue(
+    GENERATE_AI_ANALYSIS_QUEUE,
+    generateAiAnalysisQueueOptions(config),
+  );
 
   const publisher = createPgBossPublisher(boss);
   const reproductionPublisher = createPgBossReproductionPublisher(boss);
+  const aiAnalysisPublisher = createPgBossAiAnalysisPublisher(boss);
   const storage = deps.artifactStorage ?? resolveArtifactStorage(logger);
   const handler = createProcessEventJobHandler({
     db: client.db,
@@ -146,6 +162,25 @@ export async function startWorkerRuntime(
       pollingIntervalSeconds: config.jobPollMs / 1000,
     },
     reproductionHandler,
+  );
+
+  // The AI consumer needs retry metadata to detect its final allowed attempt
+  // so a transient provider outage ends as one terminal failed analysis
+  // instead of a row stuck pending forever.
+  const aiAnalysisHandler = createGenerateAiAnalysisJobHandler({
+    db: client.db,
+    logger,
+    capability: config.ollama ?? { state: "disabled" },
+  });
+  await boss.work(
+    GENERATE_AI_ANALYSIS_QUEUE,
+    {
+      localConcurrency: config.concurrency,
+      batchSize: 1,
+      pollingIntervalSeconds: config.jobPollMs / 1000,
+      includeMetadata: true,
+    },
+    aiAnalysisHandler,
   );
 
   const dispatcher = startOutboxDispatcher({
@@ -180,6 +215,21 @@ export async function startWorkerRuntime(
       config.reproductionOutboxReconcileMs,
       config.reproductionOutboxPollMs * 5,
     ),
+  });
+  const aiAnalysisDispatcher = startAiAnalysisDispatcher({
+    db: client.db,
+    publisher: aiAnalysisPublisher,
+    logger,
+    batchSize: config.outboxBatchSize,
+    pollMs: config.outboxPollMs,
+  });
+  const aiAnalysisReconciliation = startAiAnalysisReconciliation({
+    db: client.db,
+    publisher: aiAnalysisPublisher,
+    logger,
+    batchSize: config.outboxBatchSize,
+    intervalMs: config.outboxReconcileMs,
+    staleAfterMs: Math.max(config.outboxReconcileMs, config.outboxPollMs * 5),
   });
   const invitationCleanup = startExpiredInvitationCleanupRunner({
     db: client.db,
@@ -220,8 +270,11 @@ export async function startWorkerRuntime(
       await reconciliation.stop();
       await reproductionDispatcher.stop();
       await reproductionReconciliation.stop();
+      await aiAnalysisDispatcher.stop();
+      await aiAnalysisReconciliation.stop();
       await boss.offWork(PROCESS_EVENT_QUEUE, { wait: true });
       await boss.offWork(GENERATE_REPRODUCTION_QUEUE, { wait: true });
+      await boss.offWork(GENERATE_AI_ANALYSIS_QUEUE, { wait: true });
       await boss.stop({
         graceful: true,
         timeout: SHUTDOWN_TIMEOUT_MS,

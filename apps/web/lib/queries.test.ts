@@ -3,6 +3,9 @@ import { render } from "@testing-library/react";
 import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  aiAnalysisQuery,
+  aiCapabilityQuery,
+  issueAiAnalysesQuery,
   queryKeys,
   toWorkspaceAuditQuery,
   useInvalidateDomain,
@@ -81,6 +84,60 @@ describe("workspace governance query factories", () => {
     });
     expect(invalidate).toHaveBeenNthCalledWith(2, {
       queryKey: queryKeys.workspaceAudit("workspace-1"),
+    });
+    expect(invalidate).not.toHaveBeenCalledWith({});
+  });
+});
+
+describe("AI analysis query factories", () => {
+  it("keys capability, paginated history and detail without a global key", () => {
+    expect(aiCapabilityQuery().queryKey).toEqual(["meta", "ai-analysis"]);
+    expect(
+      issueAiAnalysesQuery("issue-1", { limit: 25, cursor: "c1" }).queryKey,
+    ).toEqual(["issues", "issue-1", "ai-analyses", "cursor=c1&limit=25"]);
+    expect(issueAiAnalysesQuery("issue-1", {}).queryKey).toEqual([
+      "issues",
+      "issue-1",
+      "ai-analyses",
+      "",
+    ]);
+    expect(aiAnalysisQuery("analysis-1").queryKey).toEqual([
+      "ai-analyses",
+      "analysis-1",
+    ]);
+  });
+
+  it("invalidates only capability, history prefix and one detail", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    let actions: ReturnType<typeof useInvalidateDomain> | undefined;
+    render(
+      React.createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        React.createElement(InvalidationProbe, {
+          onReady: (value: ReturnType<typeof useInvalidateDomain>) => {
+            actions = value;
+          },
+        }),
+      ),
+    );
+    if (actions === undefined) {
+      throw new Error("Invalidation probe did not initialize");
+    }
+
+    await actions.invalidateAiCapability();
+    await actions.invalidateIssueAiAnalyses("issue-1");
+    await actions.invalidateAiAnalysis("analysis-1");
+
+    expect(invalidate).toHaveBeenNthCalledWith(1, {
+      queryKey: queryKeys.aiCapability,
+    });
+    expect(invalidate).toHaveBeenNthCalledWith(2, {
+      queryKey: ["issues", "issue-1", "ai-analyses"],
+    });
+    expect(invalidate).toHaveBeenNthCalledWith(3, {
+      queryKey: queryKeys.aiAnalysis("analysis-1"),
     });
     expect(invalidate).not.toHaveBeenCalledWith({});
   });

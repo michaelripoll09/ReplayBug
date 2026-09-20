@@ -6,6 +6,75 @@ import {
   isSafeArtifactRoot,
 } from "@replaybug/artifacts";
 
+const OLLAMA_MIN_TIMEOUT_MS = 1_000;
+const OLLAMA_MAX_TIMEOUT_MS = 120_000;
+
+function hasControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
+}
+
+function parseOllamaUrl(value: string): string | null {
+  if (value.length === 0 || hasControlCharacter(value)) return null;
+  try {
+    const url = new URL(value);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.search !== "" ||
+      url.hash !== "" ||
+      url.hostname === ""
+    ) {
+      return null;
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+export interface AiAnalysisCapability {
+  status: "disabled" | "configured" | "misconfigured";
+  configured: boolean;
+  model?: string;
+}
+
+/** Mirrors the worker's capability semantics without blocking startup. */
+export function resolveAiAnalysisCapability(input: {
+  ollamaUrl?: string | undefined;
+  ollamaModel?: string | undefined;
+  ollamaTimeoutMs?: number | undefined;
+}): AiAnalysisCapability {
+  const { ollamaUrl, ollamaModel, ollamaTimeoutMs } = input;
+
+  if (
+    ollamaTimeoutMs !== undefined &&
+    (!Number.isInteger(ollamaTimeoutMs) ||
+      ollamaTimeoutMs < OLLAMA_MIN_TIMEOUT_MS ||
+      ollamaTimeoutMs > OLLAMA_MAX_TIMEOUT_MS)
+  ) {
+    return { status: "misconfigured", configured: false };
+  }
+  if (ollamaUrl === undefined && ollamaModel === undefined) {
+    return { status: "disabled", configured: false };
+  }
+  if (ollamaUrl === undefined || ollamaModel === undefined) {
+    return { status: "misconfigured", configured: false };
+  }
+  const baseUrl = parseOllamaUrl(ollamaUrl);
+  if (baseUrl === null) {
+    return { status: "misconfigured", configured: false };
+  }
+  const model = ollamaModel.trim();
+  if (hasControlCharacter(model) || model.length === 0 || model.length > 256) {
+    return { status: "misconfigured", configured: false };
+  }
+  return { status: "configured", configured: true, model };
+}
+
 /**
  * Validated API runtime configuration. No scattered `process.env` access is
  * allowed outside this module: every setting is parsed once at startup and
@@ -24,6 +93,23 @@ export const apiConfigSchema = z.object({
   // break startup. The AI feature itself arrives in a later block.
   ollamaUrl: z.string().optional(),
   ollamaModel: z.string().optional(),
+  ollamaTimeoutMs: z.preprocess((value) => {
+    if (value === undefined) return undefined;
+    const parsed = Number(value);
+    if (
+      !Number.isInteger(parsed) ||
+      parsed < OLLAMA_MIN_TIMEOUT_MS ||
+      parsed > OLLAMA_MAX_TIMEOUT_MS
+    ) {
+      return undefined;
+    }
+    return parsed;
+  }, z.number().int().min(OLLAMA_MIN_TIMEOUT_MS).max(OLLAMA_MAX_TIMEOUT_MS).optional()),
+  aiAnalysis: z.object({
+    status: z.enum(["disabled", "configured", "misconfigured"]),
+    configured: z.boolean(),
+    model: z.string().optional(),
+  }),
   // Block 2 auth boundary. All auth-related env is validated here, fail-fast.
   authSecret: z
     .string()
@@ -102,6 +188,16 @@ export type ApiConfig = z.infer<typeof apiConfigSchema>;
 export function loadApiConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): ApiConfig {
+  const rawOllamaUrl = env["REPLAYBUG_OLLAMA_URL"];
+  const rawOllamaModel = env["REPLAYBUG_OLLAMA_MODEL"];
+  const rawOllamaTimeout = env["REPLAYBUG_OLLAMA_TIMEOUT_MS"];
+  const aiAnalysis = resolveAiAnalysisCapability({
+    ollamaUrl: rawOllamaUrl,
+    ollamaModel: rawOllamaModel,
+    ollamaTimeoutMs:
+      rawOllamaTimeout === undefined ? undefined : Number(rawOllamaTimeout),
+  });
+
   const rawTrusted = env["REPLAYBUG_TRUSTED_ORIGINS"];
   const parsedTrusted =
     rawTrusted !== undefined && rawTrusted.trim() !== ""
@@ -125,8 +221,10 @@ export function loadApiConfigFromEnv(
     version: env["REPLAYBUG_API_VERSION"] ?? env["npm_package_version"],
     databaseUrl: env["REPLAYBUG_DATABASE_URL"] ?? env["DATABASE_URL"],
     logLevel: env["LOG_LEVEL"],
-    ollamaUrl: env["REPLAYBUG_OLLAMA_URL"],
-    ollamaModel: env["REPLAYBUG_OLLAMA_MODEL"],
+    ollamaUrl: rawOllamaUrl,
+    ollamaModel: rawOllamaModel,
+    ollamaTimeoutMs: rawOllamaTimeout,
+    aiAnalysis,
     authSecret: env["REPLAYBUG_AUTH_SECRET"] ?? env["BETTER_AUTH_SECRET"],
     webUrl: env["REPLAYBUG_WEB_URL"],
     apiUrl: env["REPLAYBUG_API_URL"],

@@ -286,7 +286,7 @@ export function StackView({
               {mapped.length > 0 ? (
                 <pre className="mt-1 overflow-x-auto rounded-md bg-zinc-100 p-3 font-mono text-xs dark:bg-zinc-900">
                   {mapped.map((frame, i) => (
-                    <span key={i}>
+                    <span key={i} data-stack-frame-index={i + 1}>
                       {formatMappedFrame(frame)}
                       {"\n"}
                     </span>
@@ -316,7 +316,7 @@ export function StackView({
                 {frames.length > 0 ? (
                   <pre className="mt-1 overflow-x-auto rounded-md bg-zinc-100 p-3 font-mono text-xs dark:bg-zinc-900">
                     {frames.map((frame, i) => (
-                      <span key={i}>
+                      <span key={i} data-stack-frame-index={i + 1}>
                         {formatRawFrame(frame)}
                         {"\n"}
                       </span>

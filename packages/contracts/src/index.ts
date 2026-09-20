@@ -279,6 +279,29 @@ export type {
   ReproductionListResponse,
 } from "./reproductions.js";
 export {
+  AI_ANALYSIS_VERSION,
+  aiAnalysisStatusSchema,
+  aiAnalysisEvidenceReferenceSchema,
+  aiAnalysisEvidenceSchema,
+  aiAnalysisOutputSchema,
+  aiAnalysisSummarySchema,
+  aiAnalysisDetailSchema,
+  aiAnalysisListQuerySchema,
+  aiAnalysisListResponseSchema,
+  aiAnalysisJobPayloadSchema,
+} from "./ai-analysis.js";
+export type {
+  AiAnalysisStatus,
+  AiAnalysisEvidenceReference,
+  AiAnalysisEvidence,
+  AiAnalysisOutput,
+  AiAnalysisSummary,
+  AiAnalysisDetail,
+  AiAnalysisListQuery,
+  AiAnalysisListResponse,
+  AiAnalysisJobPayload,
+} from "./ai-analysis.js";
+export {
   issueExportQuerySchema,
   issueExportIssueSchema,
   issueExportRawFrameSchema,

@@ -133,6 +133,49 @@ describe("parseProjectUpdate", () => {
       ),
     ).toBeNull();
   });
+
+  it("accepts ai_analysis updates with a validated analysis id", () => {
+    const analysisId = "44444444-4444-4444-8444-444444444444";
+    expect(
+      parseProjectUpdate(
+        updateData({ type: "ai_analysis.ready", analysisId }),
+        PROJECT,
+      ),
+    ).toEqual({
+      version: 1,
+      type: "ai_analysis.ready",
+      projectId: PROJECT,
+      issueId: ISSUE,
+      analysisId,
+    });
+    expect(
+      parseProjectUpdate(
+        updateData({ type: "ai_analysis.failed", analysisId }),
+        PROJECT,
+      ),
+    ).toEqual({
+      version: 1,
+      type: "ai_analysis.failed",
+      projectId: PROJECT,
+      issueId: ISSUE,
+      analysisId,
+    });
+  });
+
+  it("drops ai_analysis updates with a malformed analysis id", () => {
+    expect(
+      parseProjectUpdate(
+        updateData({ type: "ai_analysis.ready", analysisId: "not-a-uuid" }),
+        PROJECT,
+      ),
+    ).toBeNull();
+    expect(
+      parseProjectUpdate(
+        updateData({ type: "ai_analysis.failed", analysisId: 7 }),
+        PROJECT,
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("createProjectEventStream", () => {
@@ -214,6 +257,37 @@ describe("createProjectEventStream", () => {
     source?.emitNamed("project-update", "garbage");
     source?.emitNamed("project-update", updateData({ type: "nope" }));
     expect(updates.map((u) => u.type)).toEqual(["comment.created"]);
+  });
+
+  it("forwards ai_analysis frames with their analysis id", () => {
+    const { updates } = connect();
+    const source = FakeEventSource.instances[0];
+    const analysisId = "44444444-4444-4444-8444-444444444444";
+    source?.emitOpen();
+    source?.emitNamed(
+      "project-update",
+      updateData({ type: "ai_analysis.ready", analysisId }),
+    );
+    source?.emitNamed(
+      "project-update",
+      updateData({ type: "ai_analysis.failed", analysisId }),
+    );
+    expect(updates).toEqual([
+      {
+        version: 1,
+        type: "ai_analysis.ready",
+        projectId: PROJECT,
+        issueId: ISSUE,
+        analysisId,
+      },
+      {
+        version: 1,
+        type: "ai_analysis.failed",
+        projectId: PROJECT,
+        issueId: ISSUE,
+        analysisId,
+      },
+    ]);
   });
 
   it("reconnects with capped backoff and stops after close", () => {

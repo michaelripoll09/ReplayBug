@@ -165,6 +165,17 @@ export function canGenerateReproduction(role: WorkspaceRole): boolean {
   return role !== "viewer";
 }
 
+/**
+ * Optional local AI analysis: `ai-analysis:request` needs member or above
+ * (backend `policy.ts` is the authority — viewer 403s). Read (capability,
+ * history, detail) is allowed for every role including viewer, so only the
+ * request/retry controls are gated. Viewer 403 is proven by the API
+ * integration suite (`ai-analyses.integration.test.ts`).
+ */
+export function canRequestAiAnalysis(role: WorkspaceRole): boolean {
+  return role !== "viewer";
+}
+
 export function isReadOnly(role: WorkspaceRole): boolean {
   return role === "member" || role === "viewer";
 }

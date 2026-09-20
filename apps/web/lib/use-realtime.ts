@@ -68,6 +68,19 @@ function invalidateForUpdate(
       invalidate(["notifications"]);
       break;
     }
+    case "ai_analysis.ready":
+    case "ai_analysis.failed": {
+      // A terminal AI analysis landed: refresh the issue analysis history
+      // prefix, the one immutable analysis record, the activity row and the
+      // requester notification badge — nothing else, no global sweep.
+      invalidate(["issues", update.issueId, "ai-analyses"]);
+      if (update.analysisId !== undefined) {
+        invalidate(queryKeys.aiAnalysis(update.analysisId));
+      }
+      invalidate([...issueKey, "activity"]);
+      invalidate(["notifications"]);
+      break;
+    }
   }
 }
 

@@ -6,11 +6,16 @@ import {
   GENERATE_REPRODUCTION_JOB_VERSION,
   GENERATE_REPRODUCTION_QUEUE,
 } from "./reproduction.js";
+import {
+  GENERATE_AI_ANALYSIS_JOB_VERSION,
+  GENERATE_AI_ANALYSIS_QUEUE,
+} from "./ai-analysis.js";
 
 /**
  * Registry of the job contracts this worker consumes. Scope is explicit:
- * new jobs (retention, AI analysis) are added by later blocks — never
- * incidentally.
+ * jobs are added intentionally by the block that owns them — never
+ * incidentally. The worker composition root must create and consume every
+ * queue listed here.
  */
 export interface JobContractSummary {
   name: string;
@@ -23,6 +28,10 @@ export function listRegisteredJobContracts(): JobContractSummary[] {
     {
       name: GENERATE_REPRODUCTION_QUEUE,
       version: GENERATE_REPRODUCTION_JOB_VERSION,
+    },
+    {
+      name: GENERATE_AI_ANALYSIS_QUEUE,
+      version: GENERATE_AI_ANALYSIS_JOB_VERSION,
     },
   ];
 }

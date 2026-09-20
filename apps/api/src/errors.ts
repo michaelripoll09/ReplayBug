@@ -23,6 +23,7 @@ export type DomainErrorCode =
   | "ARTIFACT_STORAGE_UNAVAILABLE"
   | "REPRODUCTION_BASE_URL_REQUIRED"
   | "REPRODUCTION_UNSUPPORTED_FAILURE"
+  | "AI_NOT_CONFIGURED"
   | "INTERNAL_ERROR";
 
 export class DomainError extends Error {
@@ -165,6 +166,13 @@ export function reproductionUnsupportedFailure(
   return new DomainError("REPRODUCTION_UNSUPPORTED_FAILURE", message);
 }
 
+/** AI analysis is disabled or misconfigured; request cannot be accepted. */
+export function aiAnalysisNotConfigured(
+  message = "AI analysis is not configured",
+): DomainError {
+  return new DomainError("AI_NOT_CONFIGURED", message);
+}
+
 /** Map a domain code to HTTP status. */
 export function statusForCode(code: DomainErrorCode): number {
   switch (code) {
@@ -198,6 +206,8 @@ export function statusForCode(code: DomainErrorCode): number {
     case "REPRODUCTION_BASE_URL_REQUIRED":
     case "REPRODUCTION_UNSUPPORTED_FAILURE":
       return 422;
+    case "AI_NOT_CONFIGURED":
+      return 503;
     case "INTERNAL_ERROR":
       return 500;
   }

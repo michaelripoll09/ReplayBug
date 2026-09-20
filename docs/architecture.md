@@ -34,6 +34,7 @@ local filesystem is the current stateful infrastructure.
 | [architecture/fingerprinting.md](architecture/fingerprinting.md)                 | Normalization and grouping rules                                              |
 | [architecture/source-maps.md](architecture/source-maps.md)                       | Releases, local artifacts, symbolication and artifact deletion                |
 | [architecture/reproduction-generator.md](architecture/reproduction-generator.md) | Retained-evidence Playwright generation and its retention behavior            |
+| [architecture/ai-analysis.md](architecture/ai-analysis.md)                       | Optional local Ollama analysis, sanitized evidence and degraded operation     |
 | [cli.md](cli.md)                                                                 | CLI release and source-map operations                                         |
 | [self-hosting.md](self-hosting.md)                                               | Local artifact-storage operations and deletion troubleshooting                |
 | [adr/](adr/README.md)                                                            | Architecture decision records                                                 |

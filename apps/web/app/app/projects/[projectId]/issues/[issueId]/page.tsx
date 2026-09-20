@@ -19,6 +19,7 @@ import {
   canAssignIssue,
   canCommentOnIssue,
   canManageIssueTags,
+  canRequestAiAnalysis,
   canUpdateIssueStatus,
   type WorkspaceRole,
 } from "@/lib/rbac";
@@ -43,6 +44,7 @@ import {
 import { CommentsSection } from "@/components/issues/comments";
 import { ActivityTimeline } from "@/components/issues/activity-timeline";
 import { ReproductionPanel } from "@/components/issues/reproduction-panel";
+import { AiAnalysisPanel } from "@/components/issues/ai-analysis-panel";
 import { SessionTimeline } from "@/components/sessions/session-timeline";
 import { formatDateTime } from "@/lib/format";
 
@@ -269,6 +271,28 @@ export default function IssueDetailPage({
       ? []
       : [...contextData.before, contextData.anchor, ...contextData.after];
 
+  // Retention predicate for AI evidence refs: a ref is retained only when
+  // its target is still in the page's evidence DOM. Stack refs follow the
+  // selected occurrence; timeline/network refs resolve against the retained
+  // occurrence and session-context event ids.
+  const retainedEventIds = new Set<string>([
+    ...occurrenceItems.map((o) => o.eventId),
+    ...contextEntries.map((e) => e.id),
+  ]);
+  function isEvidenceRetained(ref: string): boolean {
+    if (ref === "issue:message" || ref === "release:current") {
+      return true;
+    }
+    if (/^stack:\d+$/.test(ref)) {
+      return selectedEventId !== null && selectedEventId !== undefined;
+    }
+    const eventMatch = /^(?:timeline|network):(.+)$/.exec(ref);
+    if (eventMatch !== null && eventMatch[1] !== undefined) {
+      return retainedEventIds.has(eventMatch[1]);
+    }
+    return false;
+  }
+
   return (
     <AppShell breadcrumb={breadcrumb}>
       <div className="space-y-6">
@@ -336,6 +360,7 @@ export default function IssueDetailPage({
         ) : null}
 
         <section
+          id="occurrence-evidence"
           aria-labelledby="evidence-heading"
           className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
         >
@@ -385,6 +410,7 @@ export default function IssueDetailPage({
         </section>
 
         <section
+          id="session-context"
           aria-labelledby="context-heading"
           className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
         >
@@ -440,6 +466,14 @@ export default function IssueDetailPage({
             />
           </section>
         </div>
+
+        <AiAnalysisPanel
+          projectId={projectId}
+          issueId={issueId}
+          selectedEventId={selectedEventId ?? null}
+          canRequest={canRequestAiAnalysis(role)}
+          isEvidenceRetained={isEvidenceRetained}
+        />
 
         <ReproductionPanel
           projectId={projectId}

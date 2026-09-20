@@ -33,6 +33,7 @@ const baseConfig: ApiConfig = {
   artifactMaxFileBytes: DEFAULT_ARTIFACT_MAX_FILE_BYTES,
   artifactPreflightMaxEntries: PREFLIGHT_MAX_ENTRIES,
   artifactAggregateMaxBytes: UPLOAD_AGGREGATE_MAX_BYTES,
+  aiAnalysis: { status: "disabled", configured: false },
 };
 
 describe("GET /health/live", () => {

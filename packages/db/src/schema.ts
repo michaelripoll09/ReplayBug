@@ -871,6 +871,144 @@ export const rateLimitBuckets = pgTable(
 );
 
 /**
+ * Immutable record of one local AI analysis request. Raw provider input and
+ * output are never stored: ready rows retain only the validated result
+ * columns. Nullable event/requester references preserve history when source
+ * telemetry or auth identities are deleted.
+ */
+interface AiAnalysisEvidenceJson {
+  ref: string;
+  reason: string;
+}
+
+export const aiAnalyses = pgTable(
+  "ai_analyses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    issueId: uuid("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "set null",
+    }),
+    model: text("model").notNull(),
+    status: text("status").notNull().default("pending"),
+    summary: text("summary"),
+    suspectedCause: text("suspected_cause"),
+    evidenceJson: jsonb("evidence_json").$type<AiAnalysisEvidenceJson[]>(),
+    reproductionStepsJson: jsonb("reproduction_steps_json").$type<string[]>(),
+    limitationsJson: jsonb("limitations_json").$type<string[]>(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    analysisVersion: text("analysis_version").notNull(),
+    idempotencyKeyHash: text("idempotency_key_hash").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("ai_analyses_idempotency_unique").on(
+      t.requestedByUserId,
+      t.eventId,
+      t.analysisVersion,
+      t.model,
+      t.idempotencyKeyHash,
+    ),
+    index("ai_analyses_issue_created_idx").on(t.issueId, t.createdAt),
+    index("ai_analyses_event_created_idx").on(t.eventId, t.createdAt),
+    index("ai_analyses_pending_created_idx").on(t.status, t.createdAt),
+    check(
+      "ai_analyses_status_check",
+      sql`${t.status} IN ('pending','ready','failed')`,
+    ),
+    check(
+      "ai_analyses_model_check",
+      sql`char_length(${t.model}) BETWEEN 1 AND 256 AND ${t.model} !~ '[[:cntrl:]]'`,
+    ),
+    check(
+      "ai_analyses_version_check",
+      sql`char_length(${t.analysisVersion}) BETWEEN 1 AND 32 AND ${t.analysisVersion} !~ '[[:cntrl:]]'`,
+    ),
+    check(
+      "ai_analyses_idempotency_hash_check",
+      sql`${t.idempotencyKeyHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "ai_analyses_result_bounds_check",
+      sql`(${t.summary} IS NULL OR char_length(${t.summary}) BETWEEN 1 AND 4000)
+          AND (${t.suspectedCause} IS NULL OR char_length(${t.suspectedCause}) BETWEEN 1 AND 4000)
+          AND (${t.errorCode} IS NULL OR ${t.errorCode} ~ '^[A-Z][A-Z0-9_]{0,63}$')
+          AND (${t.errorMessage} IS NULL OR char_length(${t.errorMessage}) BETWEEN 1 AND 1000)`,
+    ),
+    check(
+      "ai_analyses_lifecycle_check",
+      sql`(${t.status} = 'pending'
+            AND ${t.summary} IS NULL
+            AND ${t.suspectedCause} IS NULL
+            AND ${t.evidenceJson} IS NULL
+            AND ${t.reproductionStepsJson} IS NULL
+            AND ${t.limitationsJson} IS NULL
+            AND ${t.errorCode} IS NULL
+            AND ${t.errorMessage} IS NULL
+            AND ${t.completedAt} IS NULL)
+          OR (${t.status} = 'ready'
+            AND ${t.summary} IS NOT NULL
+            AND ${t.suspectedCause} IS NOT NULL
+            AND ${t.evidenceJson} IS NOT NULL
+            AND ${t.reproductionStepsJson} IS NOT NULL
+            AND ${t.limitationsJson} IS NOT NULL
+            AND ${t.errorCode} IS NULL
+            AND ${t.errorMessage} IS NULL
+            AND ${t.completedAt} IS NOT NULL)
+          OR (${t.status} = 'failed'
+            AND ${t.summary} IS NULL
+            AND ${t.suspectedCause} IS NULL
+            AND ${t.evidenceJson} IS NULL
+            AND ${t.reproductionStepsJson} IS NULL
+            AND ${t.limitationsJson} IS NULL
+            AND ${t.errorCode} IS NOT NULL
+            AND ${t.errorMessage} IS NOT NULL
+            AND ${t.completedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+/** One stable outbox handoff per analysis, inserted atomically with its row. */
+export const aiAnalysisOutbox = pgTable(
+  "ai_analysis_outbox",
+  {
+    analysisId: uuid("analysis_id")
+      .primaryKey()
+      .references(() => aiAnalyses.id, { onDelete: "cascade" }),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("ai_analysis_outbox_dispatched_idx").on(t.dispatchedAt),
+    index("ai_analysis_outbox_pending_created_idx").on(
+      t.dispatchedAt,
+      t.createdAt,
+    ),
+    check(
+      "ai_analysis_outbox_attempt_count_check",
+      sql`${t.attemptCount} >= 0`,
+    ),
+    check(
+      "ai_analysis_outbox_last_error_check",
+      sql`${t.lastError} IS NULL OR (char_length(${t.lastError}) BETWEEN 1 AND 1000 AND ${t.lastError} !~ '[[:cntrl:]]')`,
+    ),
+  ],
+);
+
+/**
  * Playwright reproduction tests — one row per generation request.
  *
  * `event_id` and `generated_by_user_id` are nullable with SET NULL so raw
@@ -1034,6 +1172,8 @@ export const schema = {
   eventProcessingOutbox,
   reproductionTests,
   reproductionGenerationOutbox,
+  aiAnalyses,
+  aiAnalysisOutbox,
   artifactDeletionOutbox,
   rateLimitBuckets,
 } as const;

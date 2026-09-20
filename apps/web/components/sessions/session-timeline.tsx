@@ -57,6 +57,7 @@ export function SessionTimeline({
         return (
           <li
             key={entry.id}
+            data-timeline-event-id={entry.id}
             data-highlighted={highlighted ? "true" : undefined}
             className={cn(
               "rounded-md border px-3 py-2 text-sm",

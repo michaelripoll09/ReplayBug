@@ -6,10 +6,11 @@ editing an existing one.
 
 ## Current migration history
 
-`0000_broken_donald_blake.sql` through `0007_thin_omega_sentinel.sql` define
-the current schema. Migration `0007` adds workspace invitations and the durable
+`0000_broken_donald_blake.sql` through `0008_ai_analyses.sql` define the
+current schema. Migration `0007` adds workspace invitations and the durable
 artifact-deletion outbox, and expands the audit action constraint for Block 9
-governance, retention, and deletion lifecycle actions.
+governance, retention, and deletion lifecycle actions. Migration `0008` adds
+AI analysis history and its durable dispatch outbox for Block 10.
 
 The application schema also includes workspace/project tenancy, telemetry and
 issue aggregates, release artifact metadata, reproduction history, and audit

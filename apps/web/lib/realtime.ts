@@ -20,7 +20,9 @@ export interface ProjectUpdate {
     | "assignment.changed"
     | "tags.changed"
     | "reproduction.ready"
-    | "reproduction.failed";
+    | "reproduction.failed"
+    | "ai_analysis.ready"
+    | "ai_analysis.failed";
   projectId: string;
   issueId: string;
   eventId?: string;
@@ -29,6 +31,12 @@ export interface ProjectUpdate {
    * reproduction.ready / reproduction.failed — ids only, never code.
    */
   reproductionId?: string;
+  /**
+   * AI analysis this update refers to. Only present on
+   * ai_analysis.ready / ai_analysis.failed — ids only, never result text,
+   * prompts, evidence or provider payloads.
+   */
+  analysisId?: string;
 }
 
 export interface EventSourceLike {
@@ -67,6 +75,8 @@ const KNOWN_TYPES: ReadonlySet<ProjectUpdate["type"]> = new Set([
   "tags.changed",
   "reproduction.ready",
   "reproduction.failed",
+  "ai_analysis.ready",
+  "ai_analysis.failed",
 ]);
 
 const UUID_RE =
@@ -155,6 +165,13 @@ export function parseProjectUpdate(
   ) {
     return null;
   }
+  const analysisId = record["analysisId"];
+  if (
+    analysisId !== undefined &&
+    (typeof analysisId !== "string" || !UUID_RE.test(analysisId))
+  ) {
+    return null;
+  }
   return {
     version: 1,
     type: type as ProjectUpdate["type"],
@@ -162,6 +179,7 @@ export function parseProjectUpdate(
     issueId,
     ...(eventId !== undefined ? { eventId } : {}),
     ...(reproductionId !== undefined ? { reproductionId } : {}),
+    ...(analysisId !== undefined ? { analysisId } : {}),
   };
 }
 

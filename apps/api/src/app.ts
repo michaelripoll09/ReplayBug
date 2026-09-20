@@ -22,6 +22,7 @@ import { registerRequestId } from "./plugins/request-id.js";
 import { registerErrorHandler } from "./plugins/error-handler.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerMetaRoutes } from "./routes/meta.js";
+import { registerAiAnalysisRoutes } from "./routes/ai-analyses.js";
 import { registerAuthRoutes } from "./routes/auth-handler.js";
 import { registerMeRoutes } from "./routes/me.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
@@ -182,6 +183,10 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
             name: "Ingest",
             description: "Public telemetry event ingestion",
           },
+          {
+            name: "AI Analysis",
+            description: "Optional local Ollama issue analysis",
+          },
         ],
         components: {
           securitySchemes: {
@@ -253,6 +258,8 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   await registerMetaRoutes(app, {
     version: config.version,
     environment: config.environment,
+    auth,
+    config,
   });
   await registerAuthRoutes(app, auth);
   await registerMeRoutes(app, { auth });
@@ -304,6 +311,7 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   });
   await registerSessionRoutes(app, { db, auth });
   await registerIngestRoutes(app, { db, config });
+  await registerAiAnalysisRoutes(app, { db, dbClient, auth, config });
   await registerDemo500Route(app);
 
   return app;

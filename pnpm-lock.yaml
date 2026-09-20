@@ -308,6 +308,9 @@ importers:
       '@replaybug/artifacts':
         specifier: workspace:*
         version: link:../../packages/artifacts
+      '@replaybug/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@replaybug/db':
         specifier: workspace:*
         version: link:../../packages/db

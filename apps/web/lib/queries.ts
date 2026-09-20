@@ -14,6 +14,15 @@ export const workspaceGovernanceClient =
   api.client as unknown as Client<GeneratedApiPaths>;
 
 /**
+ * Block 10 optional local AI analysis endpoints live in the generated
+ * workspace schema but not yet in the built package declaration. Same typed
+ * view pattern as `workspaceGovernanceClient`; the runtime transport is still
+ * the browser singleton.
+ */
+export const aiAnalysisClient =
+  api.client as unknown as Client<GeneratedApiPaths>;
+
+/**
  * TanStack Query factories. Targeted invalidation only: callers invalidate
  * the exact list/detail key they mutated. No global `invalidateQueries()`
  * without a key, no polling, no optimistic key rotation.
@@ -105,6 +114,15 @@ export const queryKeys = {
     ["issues", issueId, "reproductions", serializeParams(params)] as const,
   reproduction: (reproductionId: string) =>
     ["reproductions", reproductionId] as const,
+  // Block 10 optional local AI analysis. Capability is a singleton meta
+  // key; history is paginated under the issue and invalidated by prefix;
+  // detail is one immutable analysis record. No provider URL, prompt or
+  // raw response ever reaches these caches — the API only returns safe
+  // structured output.
+  aiCapability: ["meta", "ai-analysis"] as const,
+  issueAiAnalyses: (issueId: string, params: PageParams) =>
+    ["issues", issueId, "ai-analyses", serializeParams(params)] as const,
+  aiAnalysis: (id: string) => ["ai-analyses", id] as const,
   tags: (projectId: string) => ["projects", projectId, "tags"] as const,
   workspaceMembers: (workspaceId: string) =>
     ["workspaces", workspaceId, "members"] as const,
@@ -453,6 +471,44 @@ export function reproductionQuery(reproductionId: string) {
   });
 }
 
+export function aiCapabilityQuery() {
+  return queryOptions({
+    queryKey: queryKeys.aiCapability,
+    queryFn: () =>
+      fetchGet(() => aiAnalysisClient.GET("/api/v1/meta/ai-analysis", {})),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function issueAiAnalysesQuery(issueId: string, params: PageParams) {
+  return queryOptions({
+    queryKey: queryKeys.issueAiAnalyses(issueId, params),
+    queryFn: () =>
+      fetchGet(() =>
+        aiAnalysisClient.GET("/api/v1/issues/{issueId}/ai-analyses", {
+          params: { path: { issueId }, query: toPageQuery(params) },
+        }),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function aiAnalysisQuery(id: string) {
+  return queryOptions({
+    queryKey: queryKeys.aiAnalysis(id),
+    queryFn: () =>
+      fetchGet(() =>
+        aiAnalysisClient.GET("/api/v1/ai-analyses/{id}", {
+          params: { path: { id } },
+        }),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
 export function tagsQuery(projectId: string) {
   return queryOptions({
     queryKey: queryKeys.tags(projectId),
@@ -778,6 +834,10 @@ export function useInvalidateDomain(): {
   invalidateIssue: (issueId: string) => Promise<void>;
   invalidateIssueReproductions: (issueId: string) => Promise<void>;
   invalidateReproduction: (reproductionId: string) => Promise<void>;
+  invalidateIssueActivity: (issueId: string) => Promise<void>;
+  invalidateAiCapability: () => Promise<void>;
+  invalidateIssueAiAnalyses: (issueId: string) => Promise<void>;
+  invalidateAiAnalysis: (id: string) => Promise<void>;
   invalidateSessions: (projectId: string) => Promise<void>;
   invalidateSession: (sessionId: string) => Promise<void>;
   invalidateTags: (projectId: string) => Promise<void>;
@@ -832,6 +892,18 @@ export function useInvalidateDomain(): {
       client.invalidateQueries({
         queryKey: queryKeys.reproduction(reproductionId),
       }),
+    invalidateIssueActivity: (issueId: string) =>
+      client.invalidateQueries({
+        queryKey: ["issues", issueId, "activity"],
+      }),
+    invalidateAiCapability: () =>
+      client.invalidateQueries({ queryKey: queryKeys.aiCapability }),
+    invalidateIssueAiAnalyses: (issueId: string) =>
+      client.invalidateQueries({
+        queryKey: ["issues", issueId, "ai-analyses"],
+      }),
+    invalidateAiAnalysis: (id: string) =>
+      client.invalidateQueries({ queryKey: queryKeys.aiAnalysis(id) }),
     invalidateSessions: (projectId: string) =>
       client.invalidateQueries({ queryKey: queryKeys.sessions(projectId) }),
     invalidateSession: (sessionId: string) =>

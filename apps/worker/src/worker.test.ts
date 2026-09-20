@@ -11,6 +11,10 @@ import {
   GENERATE_REPRODUCTION_JOB_VERSION,
   GENERATE_REPRODUCTION_QUEUE,
 } from "./queues/reproduction.js";
+import {
+  GENERATE_AI_ANALYSIS_JOB_VERSION,
+  GENERATE_AI_ANALYSIS_QUEUE,
+} from "./queues/ai-analysis.js";
 import { listRegisteredJobContracts } from "./queues/index.js";
 import { sanitizeOutboxError } from "./dispatcher/publish-batch.js";
 import { startExpiredInvitationCleanupRunner } from "./cleanup/invitations.js";
@@ -202,13 +206,17 @@ describe("cleanup runner shutdown", () => {
 });
 
 describe("process-event job contract", () => {
-  it("registers the process-event and generate-reproduction queues", () => {
+  it("registers the process-event, generate-reproduction, and generate-ai-analysis queues", () => {
     const contracts = listRegisteredJobContracts();
     expect(contracts).toEqual([
       { name: PROCESS_EVENT_QUEUE, version: PROCESS_EVENT_JOB_VERSION },
       {
         name: GENERATE_REPRODUCTION_QUEUE,
         version: GENERATE_REPRODUCTION_JOB_VERSION,
+      },
+      {
+        name: GENERATE_AI_ANALYSIS_QUEUE,
+        version: GENERATE_AI_ANALYSIS_JOB_VERSION,
       },
     ]);
   });

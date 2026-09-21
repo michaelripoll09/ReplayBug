@@ -1,0 +1,161 @@
+name: replaybug-full
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${REPLAYBUG_POSTGRES_USER:-replaybug}
+      POSTGRES_PASSWORD: ${REPLAYBUG_POSTGRES_PASSWORD:-replaybug}
+      POSTGRES_DB: ${REPLAYBUG_POSTGRES_DB:-replaybug}
+    ports:
+      - "${REPLAYBUG_POSTGRES_PORT:-5544}:5432"
+    volumes:
+      - replaybug-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      REPLAYBUG_DATABASE_URL: postgres://${REPLAYBUG_POSTGRES_USER:-replaybug}:${REPLAYBUG_POSTGRES_PASSWORD:-replaybug}@postgres:5432/${REPLAYBUG_POSTGRES_DB:-replaybug}
+      REPLAYBUG_ENVIRONMENT: ${REPLAYBUG_ENVIRONMENT:-production}
+      REPLAYBUG_AUTH_SECRET: ${REPLAYBUG_AUTH_SECRET:-replace-this-local-development-auth-secret-before-production}
+      REPLAYBUG_USER_HMAC_SECRET: ${REPLAYBUG_USER_HMAC_SECRET:-replace-this-local-development-hmac-secret-before-production}
+      REPLAYBUG_WEB_URL: ${REPLAYBUG_WEB_URL:-http://localhost:3000}
+      REPLAYBUG_API_URL: ${REPLAYBUG_API_URL:-http://localhost:4001}
+      REPLAYBUG_DEMO_MODE: ${REPLAYBUG_DEMO_MODE:-false}
+      REPLAYBUG_DEMO_PUBLIC_KEY: ${REPLAYBUG_DEMO_PUBLIC_KEY:-rb_pk_deadbeef_0123456789012345678901234567890123456789012}
+      REPLAYBUG_ARTIFACT_DIR: /var/lib/replaybug/artifacts
+    ports:
+      - "${REPLAYBUG_API_PORT:-4001}:4001"
+    volumes:
+      - replaybug-artifacts:/var/lib/replaybug/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4001/health/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      REPLAYBUG_DATABASE_URL: postgres://${REPLAYBUG_POSTGRES_USER:-replaybug}:${REPLAYBUG_POSTGRES_PASSWORD:-replaybug}@postgres:5432/${REPLAYBUG_POSTGRES_DB:-replaybug}
+      REPLAYBUG_ENVIRONMENT: ${REPLAYBUG_ENVIRONMENT:-production}
+      REPLAYBUG_ARTIFACT_DIR: /var/lib/replaybug/artifacts
+    volumes:
+      - replaybug-artifacts:/var/lib/replaybug/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: web
+      args:
+        NEXT_PUBLIC_REPLAYBUG_API_URL: ${NEXT_PUBLIC_REPLAYBUG_API_URL:-http://localhost:4001}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_REPLAYBUG_API_URL: ${NEXT_PUBLIC_REPLAYBUG_API_URL:-http://localhost:4001}
+    ports:
+      - "${REPLAYBUG_WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+  demo:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: demo
+      args:
+        VITE_REPLAYBUG_DSN: ${VITE_REPLAYBUG_DSN:-}
+        VITE_REPLAYBUG_ENVIRONMENT: ${VITE_REPLAYBUG_ENVIRONMENT:-production}
+    restart: unless-stopped
+    ports:
+      - "${REPLAYBUG_DEMO_PORT:-5173}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  migrate:
+    profiles: ["migrate"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: workspace
+    command: ["pnpm", "db:migrate"]
+    environment:
+      REPLAYBUG_DATABASE_URL: postgres://${REPLAYBUG_POSTGRES_USER:-replaybug}:${REPLAYBUG_POSTGRES_PASSWORD:-replaybug}@postgres:5432/${REPLAYBUG_POSTGRES_DB:-replaybug}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seed-demo:
+    profiles: ["seed-demo"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: workspace
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "pnpm turbo build --filter=@replaybug/db... && pnpm demo:seed",
+      ]
+    environment:
+      REPLAYBUG_DATABASE_URL: postgres://${REPLAYBUG_POSTGRES_USER:-replaybug}:${REPLAYBUG_POSTGRES_PASSWORD:-replaybug}@postgres:5432/${REPLAYBUG_POSTGRES_DB:-replaybug}
+      REPLAYBUG_DEMO_MODE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  replaybug-postgres-data:
+  replaybug-artifacts:

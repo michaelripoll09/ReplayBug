@@ -17,12 +17,15 @@ context and consequences. One ADR per file, numbered in order, in
    Block 9 supersedes worker-read-only access so the worker reads for
    symbolication and deletes durable cleanup artifacts from a writable shared
    mount (master spec §47 topic 6).
+4. [Semantic timeline instead of DOM/video replay](0004-semantic-timeline-over-video-replay.md)
+   — bounded, privacy-conscious interaction evidence that can support a
+   deterministic reproduction (master spec §47 topic 1).
+5. [Privacy-safe input capture defaults](0005-privacy-safe-input-defaults.md)
+   — input values are opt-in, redacted defensively, and rendered as test-value
+   placeholders when a reproduction needs one (master spec §47 topic 4).
+6. [SSE invalidation instead of WebSockets](0006-sse-over-websockets.md)
+   — identifier-only live-update hints over SSE, with REST as the canonical
+   source of truth (master spec §47 topic 5).
 
-## Pending (required by master spec section 47)
-
-The remaining required records are written alongside the blocks that
-implement each decision:
-
-- Semantic timeline instead of DOM/video replay (§47 topic 1)
-- Privacy-safe input capture defaults (§47 topic 4)
-- SSE instead of WebSockets (§47 topic 5)
+All architecture decisions required by master spec section 47 now have a
+recorded ADR.

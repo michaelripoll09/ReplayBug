@@ -92,6 +92,8 @@ export const workspaces = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     slug: text("slug").notNull().unique(),
+    /** Exactly one workspace may be exposed by the anonymous demo boundary. */
+    isPublicDemo: boolean("is_public_demo").notNull().default(false),
     createdByUserId: text("created_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -105,6 +107,9 @@ export const workspaces = pgTable(
   (t) => [
     index("workspaces_created_by_idx").on(t.createdByUserId),
     index("workspaces_slug_idx").on(t.slug),
+    uniqueIndex("workspaces_single_public_demo_unique")
+      .on(t.isPublicDemo)
+      .where(sql`${t.isPublicDemo} = true`),
   ],
 );
 

@@ -71,6 +71,13 @@
       "when": 1790000000001,
       "tag": "0009_reproduction_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790000000002,
+      "tag": "0010_public_demo",
+      "breakpoints": true
     }
   ]
 }

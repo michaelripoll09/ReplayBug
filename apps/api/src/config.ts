@@ -42,6 +42,34 @@ export interface AiAnalysisCapability {
   model?: string;
 }
 
+export interface GitHubAuthConfig {
+  clientId: string;
+  clientSecret: string;
+}
+
+function optionalEnvValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed === "" || trimmed === undefined ? undefined : trimmed;
+}
+
+/** GitHub OAuth is enabled only when its two non-secret config values coexist. */
+export function resolveGitHubAuthConfig(input: {
+  clientId?: string | undefined;
+  clientSecret?: string | undefined;
+}): GitHubAuthConfig | undefined {
+  const clientId = optionalEnvValue(input.clientId);
+  const clientSecret = optionalEnvValue(input.clientSecret);
+  if (clientId === undefined && clientSecret === undefined) {
+    return undefined;
+  }
+  if (clientId === undefined || clientSecret === undefined) {
+    throw new Error(
+      "Invalid API configuration: GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET must be set together to enable GitHub sign-in",
+    );
+  }
+  return { clientId, clientSecret };
+}
+
 /** Mirrors the worker's capability semantics without blocking startup. */
 export function resolveAiAnalysisCapability(input: {
   ollamaUrl?: string | undefined;
@@ -89,6 +117,12 @@ export const apiConfigSchema = z.object({
   version: z.string().min(1).default("0.1.0"),
   databaseUrl: z.string().min(1, "REPLAYBUG_DATABASE_URL must not be empty"),
   logLevel: z.string().min(1).default("info"),
+  // Anonymous public-demo reads are deliberately opt-in. Keep this parsed
+  // once at startup so route behavior cannot change with process.env later.
+  demoMode: z.boolean().default(false),
+  // This key is deliberately public: it is used by the anonymous demo client
+  // to send ingest events and must never be substituted with a key hash or token.
+  demoPublicKey: z.string().min(1).optional(),
   // Optional local Ollama analysis. Disabled by default; presence must never
   // break startup. The AI feature itself arrives in a later block.
   ollamaUrl: z.string().optional(),
@@ -110,6 +144,14 @@ export const apiConfigSchema = z.object({
     configured: z.boolean(),
     model: z.string().optional(),
   }),
+  // Optional GitHub OAuth. Its credentials are retained only for Better Auth
+  // and never exposed by the public capability response.
+  github: z
+    .object({
+      clientId: z.string().min(1),
+      clientSecret: z.string().min(1),
+    })
+    .optional(),
   // Block 2 auth boundary. All auth-related env is validated here, fail-fast.
   authSecret: z
     .string()
@@ -183,14 +225,31 @@ export const apiConfigSchema = z.object({
   artifactStagingDir: z.string().optional(),
 });
 
-export type ApiConfig = z.infer<typeof apiConfigSchema>;
+// Optional fields in the public type keep existing injected test configuration
+// compatible; loadApiConfigFromEnv always resolves demoMode from the environment.
+export type ApiConfig = Omit<
+  z.infer<typeof apiConfigSchema>,
+  "demoMode" | "demoPublicKey"
+> & {
+  demoMode?: boolean;
+  demoPublicKey?: string | undefined;
+};
 
 export function loadApiConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): ApiConfig {
   const rawOllamaUrl = env["REPLAYBUG_OLLAMA_URL"];
   const rawOllamaModel = env["REPLAYBUG_OLLAMA_MODEL"];
+  const rawDemoMode = env["REPLAYBUG_DEMO_MODE"];
+  const demoMode =
+    rawDemoMode === undefined || rawDemoMode.trim() === ""
+      ? false
+      : rawDemoMode.trim().toLowerCase() === "true";
   const rawOllamaTimeout = env["REPLAYBUG_OLLAMA_TIMEOUT_MS"];
+  const github = resolveGitHubAuthConfig({
+    clientId: env["GITHUB_CLIENT_ID"],
+    clientSecret: env["GITHUB_CLIENT_SECRET"],
+  });
   const aiAnalysis = resolveAiAnalysisCapability({
     ollamaUrl: rawOllamaUrl,
     ollamaModel: rawOllamaModel,
@@ -221,10 +280,13 @@ export function loadApiConfigFromEnv(
     version: env["REPLAYBUG_API_VERSION"] ?? env["npm_package_version"],
     databaseUrl: env["REPLAYBUG_DATABASE_URL"] ?? env["DATABASE_URL"],
     logLevel: env["LOG_LEVEL"],
+    demoMode,
+    demoPublicKey: env["REPLAYBUG_DEMO_PUBLIC_KEY"],
     ollamaUrl: rawOllamaUrl,
     ollamaModel: rawOllamaModel,
     ollamaTimeoutMs: rawOllamaTimeout,
     aiAnalysis,
+    github,
     authSecret: env["REPLAYBUG_AUTH_SECRET"] ?? env["BETTER_AUTH_SECRET"],
     webUrl: env["REPLAYBUG_WEB_URL"],
     apiUrl: env["REPLAYBUG_API_URL"],

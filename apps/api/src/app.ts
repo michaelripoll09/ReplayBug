@@ -43,6 +43,7 @@ import { createProjectUpdatesBroker } from "./realtime/broker.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerDemo500Route } from "./routes/demo/500.js";
+import { registerPublicDemoRoutes } from "./routes/public-demo.js";
 
 export interface BuildAppOptions {
   config: ApiConfig;
@@ -312,6 +313,7 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
   await registerSessionRoutes(app, { db, auth });
   await registerIngestRoutes(app, { db, config });
   await registerAiAnalysisRoutes(app, { db, dbClient, auth, config });
+  await registerPublicDemoRoutes(app, { db, config });
   await registerDemo500Route(app);
 
   return app;

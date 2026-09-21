@@ -181,6 +181,7 @@ describe("GET /api/v1/meta", () => {
         service: "api",
         version: "0.1.0",
         environment: "test",
+        auth: { github: false },
       });
     } finally {
       await app.close();

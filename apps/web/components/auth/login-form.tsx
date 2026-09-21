@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { signIn } from "@/lib/auth-client";
+import { getAuthCapabilities, signIn } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,10 +55,12 @@ function messageForLoginError(error: unknown): {
   };
 }
 
-/** Email+password login. RHF+Zod, inline errors, 401 vs generic. */
+/** Email/password login plus a server-advertised optional GitHub provider. */
 export function LoginForm(): React.JSX.Element {
   const router = useRouter();
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [githubEnabled, setGithubEnabled] = React.useState(false);
+  const [githubSigningIn, setGithubSigningIn] = React.useState(false);
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
@@ -68,6 +70,16 @@ export function LoginForm(): React.JSX.Element {
   const passwordId = React.useId();
   const emailErrorId = `${emailId}-error`;
   const passwordErrorId = `${passwordId}-error`;
+
+  React.useEffect(() => {
+    let current = true;
+    void getAuthCapabilities().then((capabilities) => {
+      if (current) setGithubEnabled(capabilities.github);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
 
   async function onSubmit(values: LoginValues): Promise<void> {
     setFormError(null);
@@ -87,6 +99,24 @@ export function LoginForm(): React.JSX.Element {
     }
     router.push("/");
     router.refresh();
+  }
+
+  async function onGitHubSignIn(): Promise<void> {
+    setFormError(null);
+    setGithubSigningIn(true);
+    try {
+      const result = await signIn.social({
+        provider: "github",
+        callbackURL: "/",
+      });
+      if (result.error !== null && result.error !== undefined) {
+        setFormError(messageForLoginError(result.error).message);
+      }
+    } catch (error) {
+      setFormError(messageForLoginError(error).message);
+    } finally {
+      setGithubSigningIn(false);
+    }
   }
 
   const submitting = form.formState.isSubmitting;
@@ -141,6 +171,17 @@ export function LoginForm(): React.JSX.Element {
       <Button type="submit" className="w-full" disabled={submitting}>
         {submitting ? "Signing in…" : "Sign in"}
       </Button>
+      {githubEnabled ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          disabled={githubSigningIn}
+          onClick={() => void onGitHubSignIn()}
+        >
+          {githubSigningIn ? "Connecting to GitHub…" : "Continue with GitHub"}
+        </Button>
+      ) : null}
     </form>
   );
 }

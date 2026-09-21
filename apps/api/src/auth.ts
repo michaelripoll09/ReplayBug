@@ -23,7 +23,7 @@ export interface AuthContext {
 
 /**
  * Create the Better Auth instance (email/password, PG persistence).
- * - No OAuth this block, no fake reset.
+ * - GitHub OAuth is added only when both validated provider values exist.
  * - HttpOnly cookies, Secure in production, SameSite Lax, rotation via
  *   session updateAge.
  * - All auth config comes from the validated ApiConfig boundary.
@@ -39,6 +39,16 @@ export function createAuth(db: Database, config: ApiConfig): Auth {
       minPasswordLength: 8,
       maxPasswordLength: 128,
     },
+    ...(config.github === undefined
+      ? {}
+      : {
+          socialProviders: {
+            github: {
+              clientId: config.github.clientId,
+              clientSecret: config.github.clientSecret,
+            },
+          },
+        }),
     session: {
       expiresIn: 60 * 60 * 24 * 7,
       updateAge: 60 * 60 * 24,

@@ -51,6 +51,35 @@ describe("loadApiConfigFromEnv", () => {
     ).toThrow(/Invalid API configuration/);
   });
 
+  it("keeps GitHub OAuth disabled when both provider values are absent", () => {
+    const config = loadApiConfigFromEnv(baseEnv);
+    expect(config.github).toBeUndefined();
+  });
+
+  it("enables GitHub OAuth only when both provider values are configured", () => {
+    const config = loadApiConfigFromEnv({
+      ...baseEnv,
+      GITHUB_CLIENT_ID: "github-client-id",
+      GITHUB_CLIENT_SECRET: "github-client-secret",
+    });
+    expect(config.github).toEqual({
+      clientId: "github-client-id",
+      clientSecret: "github-client-secret",
+    });
+  });
+
+  it.each([
+    { GITHUB_CLIENT_ID: "github-client-id" },
+    { GITHUB_CLIENT_SECRET: "github-client-secret" },
+  ])(
+    "fails fast when exactly one GitHub provider value is configured",
+    (githubEnv) => {
+      expect(() => loadApiConfigFromEnv({ ...baseEnv, ...githubEnv })).toThrow(
+        /GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET must be set together/,
+      );
+    },
+  );
+
   it("accepts disabled Ollama settings without breaking startup", () => {
     const config = loadApiConfigFromEnv(baseEnv);
     expect(config.ollamaUrl).toBeUndefined();

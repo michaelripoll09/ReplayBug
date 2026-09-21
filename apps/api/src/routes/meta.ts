@@ -9,7 +9,7 @@ export interface MetaRouteOptions {
   version: string;
   environment: string;
   auth: Auth;
-  config: Pick<ApiConfig, "aiAnalysis">;
+  config: Pick<ApiConfig, "aiAnalysis" | "github">;
 }
 
 /** GET /api/v1/meta — versioned service metadata for operators and CI. */
@@ -24,11 +24,18 @@ export async function registerMetaRoutes(
         response: {
           200: {
             type: "object",
-            required: ["service", "version", "environment"],
+            required: ["service", "version", "environment", "auth"],
             properties: {
               service: { const: "api" },
               version: { type: "string" },
               environment: { type: "string" },
+              auth: {
+                type: "object",
+                required: ["github"],
+                properties: {
+                  github: { type: "boolean" },
+                },
+              },
             },
           },
         },
@@ -38,6 +45,7 @@ export async function registerMetaRoutes(
       service: "api" as const,
       version: options.version,
       environment: options.environment,
+      auth: { github: options.config.github !== undefined },
     }),
   );
 

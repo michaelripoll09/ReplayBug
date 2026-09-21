@@ -1,302 +1,218 @@
 # ReplayBug
 
-Developer observability for reproducible bugs: privacy-safe browser failure
-context, grouped issues, session timelines, and Playwright reproduction
-tests — on a self-hostable stack with no paid services.
+**Turn a browser runtime error into evidence a developer can rerun.**
 
-> **Status: Block 10 optional local AI analysis.** Everything from Blocks 7–9
-> still holds — and ReplayBug now adds optional, local-first issue analysis
-> through an operator-configured Ollama endpoint: bounded sanitized evidence,
-> strict structured-output validation, immutable analysis history, and
-> hypothesis-labeled results. ReplayBug never requires AI or a hosted model
-> provider. SMTP delivery, cloud storage, hosted execution, billing, SSO,
-> hosted or paid LLM integration, and deployment automation are not
-> implemented.
+ReplayBug captures privacy-safe browser failure context, groups repeated failures,
+shows the semantic timeline that led to an occurrence, maps stacks through uploaded
+source maps, and generates a Playwright test from retained evidence. It is designed
+for self-hosting with PostgreSQL and a local artifact volume—not paid services.
 
-## What exists today
+The synthetic public demo and its local screenshot are portfolio evidence.
 
-- pnpm workspaces + Turborepo monorepo (`apps/*`, `packages/*`)
-- Next.js dashboard at `apps/web`: smart `/` redirect, `/login`, `/register`
-  (email/password, no OAuth), `/onboarding[/workspace|/project|/origin|/complete]`
-  wizard, `/app/workspaces/[workspaceId]` and `/app/projects/[projectId]`
-  overviews (live metrics where telemetry exists),
-  `/app/projects/[projectId]/settings[/general|/environments|/origins|/keys]`
-  with RBAC hide-or-readonly, sidebar + workspace switcher + theme
-  (light/dark/system, no flash) + mobile drawer. See
-  `docs/architecture/frontend.md`.
-- Dashboard issues workflow (Block 6): project overview with Recharts
-  metrics (`?range=24h|7d|30d`), issue list with URL-driven
-  search/filter/sort/keyset pagination, and issue detail with occurrence
-  selection, mapped/raw stack evidence, session context, timelines, and
-  collaboration controls. Viewer roles are read-only in UI and 403 on direct
-  API mutation. See `docs/architecture/dashboard.md` and
-  `docs/architecture/realtime.md`.
-- Typed dashboard client at `packages/api-client`: `pnpm api:generate`
-  prepares its workspace build closure (`turbo` `^build`), builds Fastify
-  in-process, writes `openapi/openapi.json` + `src/schema.d.ts`; it is
-  fresh-checkout safe (no pre-build, no database, no HTTP server).
-  `createReplayBugApiClient({ baseUrl, fetch })` uses `credentials: include`
-  with `{code,message,requestId,details}` normalization. `pnpm api:check`
-  regenerates and fails on drift; CI runs it.
-- Fastify API at `apps/api` with `GET /health/live`, `GET /health/ready`
-  (PostgreSQL readiness plus informational `checks.artifactStorage`
-  `up|down|unknown` — storage never flips readiness, so ingest survives
-  storage outages), `GET /api/v1/meta`, request IDs, contracts-based
-  error envelope, and OpenAPI docs in non-production (`/docs`)
-- Better Auth email/password at `/api/auth/*` with PostgreSQL persistence,
-  HttpOnly + Secure-in-production + SameSite Lax cookies, session rotation,
-  strict dashboard CORS with credentials, and `GET /api/v1/me`
-- Workspace governance: central `owner|admin|member|viewer` RBAC, member
-  management, owner-only ownership transfer and deletion, seven-day one-time
-  invitations bound to the recipient email, and paginated sanitized audit logs
-  in workspace settings; projects retain their per-workspace slug and have
-  owner/admin-managed retention and confirmed deletion
-- Browser SDK at `packages/sdk`: automatic exception, unhandled-rejection,
-  console-error and failed-request capture, navigation/click/input breadcrumbs,
-  privacy-safe defaults, batching, unload flush, retry, size budget
-- Public ingest at `apps/api` (`POST /api/ingest/v1/batch`): public-key auth,
-  exact origin matching, rate limits with atomic PostgreSQL counters,
-  server-side redaction, deterministic truncation, idempotency on
-  `(project_id, client_event_id)`, and one transaction per event writing
-  session + event + outbox row
-- Worker at `apps/worker`: validated config, PostgreSQL health check,
-  pg-boss lifecycle, event and reproduction dispatchers, invitation expiry,
-  retention cleanup, durable artifact-deletion outbox processing, bounded
-  retries, sanitized aggregate logs, and graceful drain on shutdown
-- Secret project tokens (`rb_sk_…`, owner/admin managed, one-time reveal,
-  immediate revocation) and Bearer-only CLI auth, kept strictly separate
-  from public ingest keys and dashboard sessions (see ADR `0002` and
-  `docs/cli.md`)
-- CLI-managed releases (`replaybug projects info`, `releases create/list`,
-  `sourcemaps upload` with preflight skip-existing and conflict abort) and
-  release/artifacts APIs with idempotent creates and 409s on conflicting
-  identity metadata (see `docs/cli.md`)
-- Local artifact storage (`packages/artifacts`, `REPLAYBUG_ARTIFACT_DIR`,
-  `replaybug_artifacts` Docker volume): atomic writes, server-generated
-  keys, API uploads, and worker reads for symbolication plus deletes for
-  durable cleanup; the shared worker mount is writable. Outages degrade
-  safely (see `docs/self-hosting.md` and `docs/architecture/source-maps.md`)
-- Worker symbolication before fingerprinting (`@jridgewell/trace-mapping`,
-  no network, remote `sourceMappingURL` never fetched): mapped stacks by
-  default with raw fallback, raw+mapped retention, per-position partial
-  mapping, and honest `map_not_found`/`invalid_map`/`storage_unavailable`
-  states (see `docs/architecture/source-maps.md`)
-- Issue processing: deterministic fingerprinting (exception,
-  unhandled rejection, console error, network, message; custom override on
-  manual capture), now preferring source-mapped frames so the same
-  original source groups into one issue across releases (release stays
-  excluded), issue grouping with `UNIQUE (project_id, fingerprint)`,
-  occurrence and distinct-session aggregates, first/last seen and
-  first/last release (out-of-order safe), regression reopen with activity and
-  assignee notification, ignored/investigating semantics, and
-  `pg_notify replaybug_project_updates`
-- Release/token dashboard: release list/detail (counts, artifact metadata,
-  never `storage_key`), secret-token settings with one-time modal, issue
-  stacks defaulting to mapped with a Source mapped/Raw toggle
-- Occurrence → Playwright reproduction (Block 8): pure generator in
-  `packages/reproducer` (plan IR over the last 50 session events,
-  semantic navigation/click/input extraction, test_id > role_name >
-  label > id > name > css_fallback locator ranking with brittle warnings,
-  same-origin route sanitization, sensitive values replaced with
-  `REPLACE_WITH_TEST_VALUE` placeholders, `pageerror`/`network`/
-  `console_error` failure assertions with bounded `expect.poll`),
-  `reproduction_tests` + `reproduction_generation_outbox` tables
-  (drizzle `0006`), `POST /api/v1/events/:eventId/reproductions`
-  (Idempotency-Key, pre-validates evidence, 202 new / 200 deduped) +
-  per-issue history list (no code) + detail + download endpoints, worker
-  `replaybug.generate-reproduction` queue with dispatcher and deterministic
-  ready/failed completion, dashboard panel (generate/copy/download/
-  regenerate/history, viewer read-only), and a verified demo-generated
-  test (`demo-uncaught-error` pageerror scenario passes locally via
-  `scripts/verify-generated-test.ts`, loopback-only). See
-  `docs/architecture/reproduction-generator.md`
-- Issue JSON export: an authenticated, single-issue download with allowlisted
-  issue data, an optional retained occurrence, raw/mapped stack views, bounded
-  timeline, and safe reproduction summaries (never telemetry payloads, comment
-  bodies, reproduction code, or secrets)
-- Optional local AI analysis (Block 10): authenticated request, per-issue
-  history, and detail endpoints (`POST /api/v1/events/:eventId/ai-analyses`
-  with an `Idempotency-Key`), plus a capability DTO that never exposes the
-  provider URL. Evidence is a bounded sanitized bundle with deterministic
-  `issue:message`, `stack:<n>`, `timeline:<id>`, `network:<id>` and
-  `release:current` refs; output is strict Zod-validated JSON with one
-  structured retry and no raw-output persistence; a durable outbox drives the
-  `replaybug.generate-ai-analysis` job with transient-vs-deterministic
-  retries. The issue-detail panel shows the mandatory hypothesis disclaimer,
-  "Suspected cause", evidence links, suggestions-only steps, and honest failed
-  or disabled states. See `docs/architecture/ai-analysis.md`
-- Core ReplayBug does **not** require AI: ingest, grouping, issue detail,
-  timelines, retention, deletion, and deterministic Playwright reproduction
-  keep working with Ollama disabled, misconfigured, or offline, and
-  `/health/ready` never depends on AI
-- Real Drizzle versioned migrations through `0008_ai_analyses.sql`,
-  with empty-database and upgrade-boundary migration tests; dev-only seed
-  (`pnpm db:seed`) creates demo tenancy only
-- PostgreSQL 17 via Docker Compose with healthcheck and persistent volume
-- GitHub Actions CI runs format, lint, typecheck, tests with PostgreSQL on
-  5544 plus hermetic temp-dir artifact storage, OpenAPI drift check, build,
-  and Chromium E2E. Block 9 governance, retention, deletion, and export
-  behavior is covered by focused unit/integration tests; this is not a claim
-  of arbitrary remote execution or deployment coverage
+## The workflow
 
-## What is explicitly not built yet
+```mermaid
+flowchart LR
+  SDK[Browser SDK] -->|runtime errors + semantic events| API[Fastify API]
+  CLI[CLI] -->|releases + source maps| API
+  API -->|transactional event outbox| PG[(PostgreSQL)]
+  API -->|artifact uploads| Artifacts[Local source-map artifacts]
+  PG --> Worker[Worker + pg-boss]
+  Artifacts -->|maps for symbolication| Worker
+  Worker -->|mapped evidence + grouping| Issues[Grouped issues]
+  Worker -->|optional, sanitized evidence| Ollama[Local Ollama]
+  Issues --> Dashboard[Next.js dashboard]
+  API --> Dashboard
+  API -->|SSE invalidation| Dashboard
+  Worker --> Repro[Playwright reproduction text]
+  Repro --> Dashboard
+```
 
-SMTP invitation delivery, S3/object storage, Redis, billing, SSO, GitHub OAuth,
-hosted or paid LLM integration (no OpenAI/Anthropic/Gemini, no hosted model
-API), hosted execution, public demo mode, and deployment automation are not
-built. Optional AI analysis is local-only: it never downloads a model, never
-uses a hosted provider, and is never required — core ReplayBug does not require
-AI. Generated tests run locally by the developer.
-Docker Compose runs PostgreSQL by default (no Ollama service, no AI
-dependency); it is not a one-command production full-stack deployment. No fake
-metrics, charts, or screenshots.
-See `docs/architecture/worker.md`, `docs/architecture/ai-analysis.md` and
-`docs/self-hosting.md` for the current operational boundaries.
+1. The SDK records runtime errors, failed requests, navigation, clicks, and other
+   bounded semantic context.
+2. Ingest validates, redacts, rate-limits, deduplicates, and commits the event and
+   its outbox handoff together.
+3. The worker symbolicates before deterministic fingerprinting, so repeated failures
+   become a grouped issue with source-mapped evidence when artifacts exist.
+4. An issue detail links an occurrence to its session timeline; a retained occurrence
+   can become a downloadable, developer-run Playwright reproduction.
 
-## Stack
-
-Node.js 24, TypeScript (strict), pnpm workspaces, Turborepo, Next.js (App
-Router) + React + Tailwind CSS, Fastify + Zod, PostgreSQL 17, Drizzle ORM,
-pg-boss (job queue on PostgreSQL), Pino, Vitest, Vite, Playwright. No Redis.
-No paid services.
-
-## Requirements
-
-- Node.js 24
-- pnpm 10 (`npm install -g pnpm@10.17.0` if missing; repo pins `pnpm@10.17.0`
-  via `packageManager`)
-- Docker (for local PostgreSQL; unit tests use mocks and run without it)
+This is intentionally **not** DOM/video replay. It preserves the smallest useful,
+privacy-conscious sequence of events rather than a recording of a user's screen.
 
 ## Quick start
 
+Requirements: Node.js 24, pnpm 10, and Docker for PostgreSQL.
+
 ```bash
-cp .env.example .env        # PowerShell: Copy-Item .env.example .env
+cp .env.example .env                 # PowerShell: Copy-Item .env.example .env
 docker compose up -d postgres
 pnpm install
-pnpm db:migrate             # needs REPLAYBUG_DATABASE_URL in the environment
-pnpm db:seed                # dev-only; DEMO/LOCAL ONLY creds, no telemetry data
+pnpm db:migrate
+pnpm db:seed                         # development-only tenancy seed
 pnpm dev
 ```
 
-`pnpm dev` also starts the worker, so telemetry accepted by the demo app is
-processed into issues locally. Watch the worker logs for
-`process-event completed` lines. To inspect the pipeline manually:
-`pnpm --filter @replaybug/worker start` (after `pnpm build`).
+`pnpm dev` starts web, API, worker, and the deliberately buggy demo. Configure the
+required URLs, auth secrets, and trusted origins in `.env`; see
+[the self-hosting guide](docs/self-hosting.md) for the full environment and Docker
+flow. Local email/password auth is available; GitHub OAuth is optional when it is
+configured.
 
-Auth runs locally with email/password (no OAuth, no paid services). Configure
-`REPLAYBUG_AUTH_SECRET` (min 32 chars), `REPLAYBUG_API_URL`,
-`REPLAYBUG_WEB_URL` and `REPLAYBUG_TRUSTED_ORIGINS` in `.env` (see
-`.env.example`), plus `NEXT_PUBLIC_REPLAYBUG_API_URL` for the dashboard
-(validated once in `apps/web/lib/config.ts`; dev `http://localhost:4001`,
-prod reverse-proxy friendly). Startup fails fast with a readable message when
-required config is missing.
+## Public synthetic demo
 
-Tenancy: one user creates a workspace (owner), then projects. Project slugs are
-unique per workspace; workspace slugs are globally unique. Roles are
-`owner|admin|member|viewer` with a central capability policy (see
-`docs/architecture/tenancy.md`). Project creation returns a one-time `bootstrap`
-with the public key plaintext, prefix, projectId and a FUTURE ingest endpoint
-marked non-functional; the key is never shown again. Rotate via
-`POST /api/v1/projects/:id/keys/public/rotate` (owner/admin).
+`/demo` is an anonymous **read-only** portfolio view backed by a designated synthetic
+demo project. Its API is limited to bounded `GET /api/v1/public-demo/*` responses;
+no authenticated route or mutation is reused. It is off unless
+`REPLAYBUG_DEMO_MODE=true`.
 
-Docker workflow: `docker compose up -d postgres` provides PostgreSQL 17 on
-`5544->5432` with healthcheck and persistent volume. Release artifacts live
-in the `replaybug_artifacts` named volume (container path
-`/var/lib/replaybug/artifacts`, dev default `~/.replaybug/artifacts` via
-`REPLAYBUG_ARTIFACT_DIR`); back it up alongside the database (see
-`docs/self-hosting.md`). Migrations are
-forward-only Drizzle files in `packages/db/drizzle`; never edit released
-migrations.
+For the full local demo, start the Docker stack, enable the flag for API, then seed
+explicitly:
 
-## Ports
+```bash
+export REPLAYBUG_DEMO_MODE=true
+docker compose -f docker-compose.full.yml up -d postgres
+docker compose -f docker-compose.full.yml --profile migrate run --rm migrate
+docker compose -f docker-compose.full.yml up -d api worker web demo
+docker compose -f docker-compose.full.yml --profile seed-demo run --rm seed-demo
+```
 
-| Service                 | Default | Variable                  |
-| ----------------------- | ------- | ------------------------- |
-| web                     | 3000    | `REPLAYBUG_WEB_PORT`      |
-| api                     | 4001    | `REPLAYBUG_API_PORT`      |
-| demo                    | 5173    | `REPLAYBUG_DEMO_PORT`     |
-| postgres (host mapping) | 5544    | `REPLAYBUG_POSTGRES_PORT` |
+Open `http://localhost:3000/demo`, select a synthetic issue, inspect its occurrence
+and timeline, then optionally open the intentionally buggy app. Do not use the
+public-demo project for real telemetry. The detailed
+[Docker instructions](docker/README.md) and [self-hosting guide](docs/self-hosting.md)
+cover URLs, TLS, storage, backup, and reset behavior.
 
-`pnpm dev` starts web + api + worker + demo concurrently with prefixed logs
-via Turborepo. API docs (non-production): `http://localhost:4001/docs`.
+![Synthetic public demo](docs/screenshots/public-demo.png)
 
-## Quality commands
+This screenshot is synthetic local evidence captured from the full Docker stack; it does not prove remote CI.
+
+## SDK and CLI
+
+Initialize the current browser SDK with a public ingest DSN. The public key is
+browser-visible by design and is restricted to telemetry ingest; do not substitute a
+secret CLI token.
+
+```ts
+import { init } from "@replaybug/sdk";
+
+init({
+  dsn: "https://rb_pk_<public-ingest-key>@api.example.com/api/ingest/v1",
+  environment: "production",
+  release: "web@1.4.2",
+  captureSafeInputs: false, // default: input values are not captured
+});
+```
+
+Release automation uses a project-scoped secret token only through
+`REPLAYBUG_AUTH_TOKEN`—there is deliberately no `--token` flag:
+
+```bash
+pnpm build # once; the CLI runs from its built dist/
+export REPLAYBUG_AUTH_TOKEN='rb_sk_<redacted>'
+node packages/cli/bin/replaybug.js projects info
+node packages/cli/bin/replaybug.js releases create 'web@1.4.2' --commit-sha 9f3c2ab1
+node packages/cli/bin/replaybug.js sourcemaps upload ./dist --release 'web@1.4.2'
+```
+
+See the [CLI reference](docs/cli.md), [credential-separation ADR](docs/adr/0002-public-ingest-key-versus-secret-token-separation.md), and [source-map design](docs/architecture/source-maps.md).
+
+## What a generated reproduction looks like
+
+ReplayBug renders code; it does not execute a customer's site. A developer reviews
+and runs the downloaded test locally. The following is representative generated
+Playwright output: it uses a semantic locator, asserts the captured failure, and
+keeps sensitive input as a required placeholder.
+
+```ts
+import { expect, test } from "@playwright/test";
+
+test("reproduces captured issue", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await page.goto("http://localhost:5173/");
+  await page.getByTestId("demo-uncaught-error").click();
+  await page.getByLabel("Email").fill("REPLACE_WITH_TEST_VALUE");
+
+  await expect
+    .poll(() =>
+      pageErrors.some((message) =>
+        message.includes("DEMO: Uncaught error after navigation and click"),
+      ),
+    )
+    .toBe(true);
+});
+```
+
+Locator preference is `test_id`, role/name, label, id, name, then a warned CSS
+fallback. Navigation is reduced to safe same-origin routes, and sensitive values are
+redacted before rendering. Details: [reproduction generator](docs/architecture/reproduction-generator.md).
+
+## Privacy, governance, and retention
+
+- Input-value capture is opt-in; password, token, card-like, and marked values are
+  redacted. Server-side sanitization is a second boundary.
+- Workspaces use owner/admin/member/viewer roles, audit sensitive governance actions,
+  and keep public ingest keys, secret CLI tokens, and dashboard sessions separate.
+- Project retention is 7–365 days. Bounded worker cleanup removes eligible raw events
+  while preserving lifetime issue aggregates; confirmed project/workspace deletion
+  queues local artifact deletion durably.
+- Optional local Ollama analysis receives a bounded sanitized evidence bundle and
+  stores only validated, hypothesis-labeled output. It is disabled unless an operator
+  configures both URL and model; core processing never requires it.
+
+Read [tenancy and retention](docs/architecture/tenancy.md),
+[optional local AI](docs/architecture/ai-analysis.md), and the
+[privacy-defaults ADR](docs/adr/0005-privacy-safe-input-defaults.md).
+
+## Testing and proof
+
+Run focused local checks as appropriate:
 
 ```bash
 pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm api:generate        # refresh OpenAPI + typed client (builds its dep closure)
-pnpm api:check           # regenerate + fail on drift (what CI runs)
+pnpm api:check
 pnpm build
-pnpm sdk:size            # SDK bundle size budget
-node packages/cli/bin/replaybug.js --version
-pnpm --filter @replaybug/web test:e2e   # dashboard Chromium E2E (needs PG + build)
-pnpm test:e2e            # web E2E + demo ingest E2E + demo worker E2E
-pnpm worker:latency      # reproducible processing-latency smoke (needs build + PG)
+pnpm test:e2e
+pnpm test:browser-compat
+pnpm verify:generated-test
+pnpm benchmark:ingest
 ```
 
-`pnpm api:generate` is self-contained: it prepares the workspace dependency
-closure before generating, so a fresh checkout only needs
-`pnpm install --frozen-lockfile` first — no `pnpm build`, no database, no
-HTTP server.
+The [acceptance map](docs/acceptance.md) connects the master Definition of Done to
+commands, routes, and documentation. [Performance notes](docs/performance.md) describe
+the self-contained local benchmark and record only actual measured output. The configured
+[GitHub Actions workflow](.github/workflows/ci.yml) defines format, lint, typecheck,
+test, build, OpenAPI, E2E, browser-compatibility, size, and dependency-audit gates.
 
-`pnpm test` includes the worker integration suites (real PostgreSQL, real
-pg-boss): event→issue creation, grouping, concurrency, regression, retries,
-poison jobs, crash-window dedupe and worker restart. `pnpm test:e2e` runs the
-demo suite twice: ingest/privacy with the worker down (events stay pending and
-dispatched-safe) and the worker suite with the real worker process
-(browser → SDK → ingest → outbox → pg-boss → worker → issue).
+## Architecture and operations
 
-## Monorepo structure
+- [Architecture overview](docs/architecture.md)
+- [Dashboard](docs/architecture/dashboard.md) · [frontend](docs/architecture/frontend.md) · [realtime SSE](docs/architecture/realtime.md)
+- [Fingerprinting](docs/architecture/fingerprinting.md) · [worker/outbox](docs/architecture/worker.md) · [source maps](docs/architecture/source-maps.md)
+- [Reproduction generator](docs/architecture/reproduction-generator.md) · [tenancy/governance](docs/architecture/tenancy.md) · [optional AI](docs/architecture/ai-analysis.md)
+- [CLI](docs/cli.md) · [self-hosting](docs/self-hosting.md) · [full Docker stack](docker/README.md)
+- [ADRs](docs/adr/README.md) · [master specification]() · [acceptance map](docs/acceptance.md) · [performance](docs/performance.md)
 
-```text
-replaybug/
-├─ apps/
-│  ├─ web/        # Next.js dashboard (auth/onboarding/shell/settings)
-│  ├─ api/        # Fastify auth/tenancy API + public telemetry ingest
-│  ├─ worker/     # Outbox dispatcher, pg-boss consumer, issue processing
-│  └─ demo/       # Deliberately buggy Vite app + Chromium E2E suites
-├─ packages/
-│  ├─ sdk/            # Browser SDK (capture, batching, privacy defaults)
-│  ├─ cli/            # replaybug CLI (projects/releases/sourcemaps, secret-token auth)
-│  ├─ artifacts/      # ArtifactStorage seam + local backend + path/key policy
-│  ├─ db/             # pg + Drizzle schema/migrations/repos/fingerprinting
-│  ├─ reproducer/     # pure occurrence→Playwright generator (no I/O)
-│  ├─ contracts/      # Zod telemetry protocol + tenancy DTOs + reproductions
-│  ├─ api-client/     # Generated OpenAPI client (openapi-fetch + types)
-│  ├─ ui/             # cn + Button (shadcn-compatible base)
-│  ├─ observability/  # Pino logger factory
-│  └─ config/         # Shared tsconfig presets
-├─ docs/
-│  ├─ architecture.md            # architecture index
-│  ├─ architecture/source-maps.md
-│  ├─ architecture/reproduction-generator.md
-│  ├─ architecture/tenancy.md
-│  ├─ architecture/frontend.md
-│  ├─ architecture/worker.md
-│  ├─ architecture/fingerprinting.md
-│  ├─ cli.md                     # CLI reference
-│  ├─ self-hosting.md            # artifact storage operations
-│  ├─ specs/replaybug-master-spec.md
-│  └─ adr/
-├─ scripts/           # seed-dev, worker-latency-smoke, verify-generated-test
-├─ docker/
-├─ .github/workflows/
-├─ docker-compose.yml
-└─ README.md
-```
+## Trade-offs and non-goals
 
-No application imports private internals from another application; shared
-behavior lives in `packages/*` with explicit `exports`.
+ReplayBug favors explainable, privacy-safe evidence over video/DOM replay. It has no
+Redis, mandatory object store, paid service, hosted execution, billing, SSO, SMTP,
+remote source-map fetches, hosted/paid LLM provider, automatic fixes, or arbitrary
+customer Playwright execution. Artifact storage is local-first and single-node today;
+the storage seam leaves room for a future backend without making one required.
 
-## Specification
+## Project status
 
-The source of truth is
-[``]().
-Foundation decisions never override it.
+The current `feat/final-portfolio` branch contains the portfolio/demo work locally.
+The repository has a GitHub Actions workflow, but remote Actions have **not** run for
+this unpushed branch; that is the only remote proof still pending. See
+[docs/acceptance.md](docs/acceptance.md) for the explicit proof map.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE) © ReplayBug Contributors.

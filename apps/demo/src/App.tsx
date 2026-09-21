@@ -14,6 +14,49 @@ import {
   triggerMinifiedReleaseError,
 } from "./scenarios/minified-release-error.js";
 
+type PublicDemoConfig = {
+  enabled: boolean;
+  projectId: string;
+  ingestUrl: string;
+  publicKey: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function parsePublicDemoConfig(value: unknown): PublicDemoConfig | null {
+  if (!isRecord(value)) return null;
+
+  const { enabled, projectId, ingestUrl, publicKey } = value;
+  if (
+    typeof enabled !== "boolean" ||
+    !isNonEmptyString(projectId) ||
+    !isNonEmptyString(ingestUrl) ||
+    !isNonEmptyString(publicKey)
+  ) {
+    return null;
+  }
+
+  return { enabled, projectId, ingestUrl, publicKey };
+}
+
+function dsnFromPublicDemoConfig(config: PublicDemoConfig): string | null {
+  try {
+    const url = new URL(config.ingestUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.username = config.publicKey;
+    url.password = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * ReplayBug Demo App - Telemetry verification scenarios
  * Initializes SDK with environment configuration and provides
@@ -22,6 +65,9 @@ import {
 export function App(): React.JSX.Element {
   const [sdkInitialized, setSdkInitialized] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
+  const [telemetryStatus, setTelemetryStatus] = useState(
+    "Checking runtime demo configuration…",
+  );
   const [lastError, setLastError] = useState<string | null>(null);
   const safeInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
@@ -38,38 +84,81 @@ export function App(): React.JSX.Element {
   const release =
     import.meta.env.VITE_REPLAYBUG_RELEASE ?? MINIFIED_RELEASE_VERSION;
   useEffect(() => {
-    const dsn = import.meta.env.VITE_REPLAYBUG_DSN;
+    let mounted = true;
     const environment =
       import.meta.env.VITE_REPLAYBUG_ENVIRONMENT ?? "development";
 
-    if (!dsn) {
-      console.log("[Demo] No DSN provided, telemetry disabled");
-      setTelemetryEnabled(false);
-      return;
-    }
+    const initialize = (dsn: string): void => {
+      try {
+        init({
+          dsn,
+          environment,
+          release,
+          debug: true,
+          captureConsoleErrors: true,
+          captureFailedRequests: true,
+          captureClicks: true,
+          captureNavigation: true,
+          captureSafeInputs: true,
+          safeInputSelectors: ['input[data-replaybug-safe="true"]'],
+        });
+        setSdkInitialized(true);
+        setTelemetryEnabled(true);
+        setTelemetryStatus("Enabled.");
+        console.log("[Demo] ReplayBug SDK initialized");
+      } catch (error) {
+        console.error("[Demo] Failed to initialize SDK:", error);
+        setTelemetryEnabled(false);
+        setTelemetryStatus("Disabled: SDK initialization failed.");
+        setLastError(error instanceof Error ? error.message : String(error));
+      }
+    };
 
-    try {
-      init({
-        dsn,
-        environment,
-        release,
-        debug: true,
-        captureConsoleErrors: true,
-        captureFailedRequests: true,
-        captureClicks: true,
-        captureNavigation: true,
-        captureSafeInputs: true,
-        safeInputSelectors: ['input[data-replaybug-safe="true"]'],
-      });
-      setSdkInitialized(true);
-      setTelemetryEnabled(true);
-      console.log("[Demo] ReplayBug SDK initialized");
-    } catch (error) {
-      console.error("[Demo] Failed to initialize SDK:", error);
-      setLastError(error instanceof Error ? error.message : String(error));
+    const configuredDsn = import.meta.env.VITE_REPLAYBUG_DSN;
+    if (configuredDsn) {
+      initialize(configuredDsn);
+    } else {
+      const configUrl = `${import.meta.env.VITE_REPLAYBUG_API_URL ?? ""}/api/v1/public-demo/config`;
+      void fetch(configUrl)
+        .then(async (response) => {
+          if (!response.ok) return null;
+          return parsePublicDemoConfig(await response.json());
+        })
+        .then((config) => {
+          if (!mounted) return;
+          if (config === null) {
+            setTelemetryStatus(
+              "Disabled: public demo configuration is unavailable.",
+            );
+            return;
+          }
+          if (!config.enabled) {
+            setTelemetryStatus(
+              "Disabled: public demo configuration is disabled.",
+            );
+            return;
+          }
+
+          const dsn = dsnFromPublicDemoConfig(config);
+          if (dsn === null) {
+            setTelemetryStatus(
+              "Disabled: public demo configuration is unavailable.",
+            );
+            return;
+          }
+          initialize(dsn);
+        })
+        .catch(() => {
+          if (mounted) {
+            setTelemetryStatus(
+              "Disabled: public demo configuration is unavailable.",
+            );
+          }
+        });
     }
 
     return () => {
+      mounted = false;
       close().catch(console.error);
     };
   }, []);
@@ -202,7 +291,10 @@ export function App(): React.JSX.Element {
         </p>
         <p>
           <strong>Telemetry:</strong>{" "}
-          {telemetryEnabled ? "✅ Enabled" : "❌ Disabled (no DSN)"}
+          {telemetryEnabled ? "✅ Enabled" : "❌ Disabled"}
+        </p>
+        <p>
+          <strong>Configuration:</strong> {telemetryStatus}
         </p>
         <p>
           <strong>Environment:</strong>{" "}

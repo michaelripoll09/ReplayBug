@@ -11,16 +11,20 @@ apps/web (Next.js dashboard)      apps/demo (Vite + React deliberately buggy app
         |                                  |
         | dashboard API (session cookie)   | @replaybug/sdk (public ingest key)
         v                                  v
-apps/api (Fastify: auth, governance, projects, ingest, exports, artifacts)
+apps/api (Fastify: auth, governance, projects, ingest, exports, public demo)
         | one transaction per accepted event: telemetry session + event + outbox
         v
 PostgreSQL 17 <----- pg-boss <----- apps/worker
    |                                      |
    | release metadata, audit, retention,  | symbolication, issue/reproduction jobs,
-   | invitation and artifact-delete outbox| bounded cleanup runners
+   | invitation and artifact-delete outbox| bounded cleanup runners, optional Ollama
    v                                      v
 local filesystem artifact store <--- API and worker share REPLAYBUG_ARTIFACT_DIR
 ```
+
+When `REPLAYBUG_DEMO_MODE=true`, `/demo` uses a separate anonymous,
+GET-only `/api/v1/public-demo/*` boundary scoped to the designated synthetic demo
+project. It is not an authenticated dashboard route and never offers mutation.
 
 No Redis, external queue, or paid service is required. PostgreSQL plus the
 local filesystem is the current stateful infrastructure.
@@ -38,6 +42,8 @@ local filesystem is the current stateful infrastructure.
 | [cli.md](cli.md)                                                                 | CLI release and source-map operations                                         |
 | [self-hosting.md](self-hosting.md)                                               | Local artifact-storage operations and deletion troubleshooting                |
 | [adr/](adr/README.md)                                                            | Architecture decision records                                                 |
+| [acceptance.md](acceptance.md)                                                   | Definition-of-Done proof map                                                  |
+| [performance.md](performance.md)                                                 | Measured-performance record structure and benchmark scope                     |
 
 ## Issue export
 

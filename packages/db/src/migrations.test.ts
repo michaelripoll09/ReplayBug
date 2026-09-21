@@ -588,8 +588,8 @@ describe("migrations against real PostgreSQL", () => {
         `SELECT COUNT(*)::int AS count FROM drizzle.__drizzle_migrations`,
       );
       // One journal row per migration file
-      // (0000 through 0009), never duplicated.
-      expect(journal.rows[0]?.count).toBe(10);
+      // (0000 through 0010), never duplicated.
+      expect(journal.rows[0]?.count).toBe(11);
     });
   });
 

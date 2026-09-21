@@ -4,6 +4,13 @@ ReplayBug is an educational, self-hosted developer tool. No production
 hosting commitment is made by this repository; anyone deploying it
 accepts responsibility for their own hardening, backups and updates.
 
+## Supported versions and updates
+
+Only the current code on the `main` branch and the latest published release
+are supported for security fixes. Older releases may not receive backports.
+Self-hosted operators are responsible for monitoring releases, applying
+updates promptly, and validating updates in their own environments.
+
 ## Reporting a vulnerability
 
 - **Do not open a public issue** for anything you believe is a security
@@ -14,8 +21,10 @@ accepts responsibility for their own hardening, backups and updates.
 - This project has no dedicated security email — the private advisory
   channel above is the only reporting route. Do not invent or trust any
   address found outside this file.
-- Include: affected version/commit, steps to reproduce, impact, and any
-  suggested fix. Redact secrets from your report.
+- Include the affected version or commit, steps to reproduce, impact, and
+  any suggested fix. Do not include secrets, access tokens, credentials,
+  production telemetry, or other private data; redact or minimize any
+  reproducer data.
 
 ## Scope notes for reviewers
 

@@ -86,3 +86,8 @@ theme uses `localStorage`. Playwright coverage exercises authentication and
 onboarding, project settings and issue workflows, viewer read-only behavior,
 and governance confirmation paths. Browser storage is inspected to ensure
 one-time values are not persisted.
+
+The separate `pnpm test:browser-compat` demo/SDK smoke runs only on Playwright
+Chromium, Firefox, and WebKit; it does not multiply the dashboard suite across
+browsers. Edge is not a separate project because its rendering engine is
+Chromium, while WebKit provides Safari-engine coverage.

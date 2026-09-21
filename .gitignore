@@ -17,6 +17,11 @@ apps/demo/dist/
 # Test outputs
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
+
+# E2E runtime fixtures (contain per-run DSNs, never commit)
+.e2e/
 
 # Environment
 .env
@@ -30,6 +35,11 @@ coverage/
 # Local artifact storage (future release artifacts live outside the repo)
 .artifacts/
 data/
+
+# Agent/tool local state (auto-generated, never commit)
+.atl/
+
+# Local planning and implementation records (keep locally, never publish)
 
 # OS / editor
 .DS_Store

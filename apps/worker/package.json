@@ -14,14 +14,21 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jridgewell/trace-mapping": "0.3.31",
+    "@replaybug/artifacts": "workspace:*",
+    "@replaybug/contracts": "workspace:*",
     "@replaybug/db": "workspace:*",
     "@replaybug/observability": "workspace:*",
+    "@replaybug/reproducer": "workspace:*",
     "pg-boss": "12.33.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@replaybug/config": "workspace:*",
     "@types/node": "22.20.3",
+    "@types/pg": "8.23.1",
+    "drizzle-orm": "0.45.2",
+    "pg": "8.23.0",
     "tsx": "4.23.13",
     "typescript": "5.9.3",
     "vitest": "5.0.1"

@@ -21,5 +21,46 @@ services:
       retries: 10
       start_period: 10s
 
+  # RS-13 artifact-volume contract holders (Block 7). Full api/worker
+  # containerization (real images, Dockerfiles) arrives in a later block
+  # per docker/README.md — these profile-gated entries exist ONLY to pin
+  # the replaybug_artifacts mount contract so
+  # `docker compose --profile full-stack config` asserts it. They never
+  # start in default workflows (`docker compose up` still brings up
+  # postgres alone); do NOT run `--profile full-stack up` until the
+  # containerization block lands. Local development runs API/worker as
+  # processes with REPLAYBUG_ARTIFACT_DIR pointing at the same directory.
+  api:
+    profiles: ["full-stack"]
+    # Placeholder: replaced by the real API image with containerization.
+    image: replaybug/api:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REPLAYBUG_ARTIFACT_DIR: /var/lib/replaybug/artifacts
+    volumes:
+      # Read/write: all artifact writes go through the API upload pipeline.
+      - replaybug_artifacts:/var/lib/replaybug/artifacts
+
+  worker:
+    profiles: ["full-stack"]
+    # Placeholder: replaced by the real worker image with containerization.
+    image: replaybug/worker:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REPLAYBUG_ARTIFACT_DIR: /var/lib/replaybug/artifacts
+    volumes:
+      # Read/write: the worker reads maps for symbolication and deletes
+      # durable artifact-deletion outbox entries on the shared volume.
+      - replaybug_artifacts:/var/lib/replaybug/artifacts
+
 volumes:
   replaybug-postgres-data:
+  # Named persistent volume for release-artifact blobs (source maps,
+  # minified assets). Survives API/worker restarts and redeploys — back it
+  # up alongside the database (see docs/self-hosting.md). No artifact
+  # bytes are ever committed to the repo.
+  replaybug_artifacts:

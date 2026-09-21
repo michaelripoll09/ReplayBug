@@ -6,3 +6,4 @@ build
 coverage
 pnpm-lock.yaml
 docs/specs/
+odd/

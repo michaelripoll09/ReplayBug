@@ -9,8 +9,11 @@
   "include": [
     "app",
     "lib",
+    "components",
     "next-env.d.ts",
     "next.config.ts",
-    "postcss.config.mjs"
-  ]
+    "postcss.config.mjs",
+    "vitest.config.ts"
+  ],
+  "exclude": ["e2e", "playwright.config.ts", "node_modules", ".next"]
 }

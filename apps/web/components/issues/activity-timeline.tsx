@@ -1,0 +1,138 @@
+"use client";
+
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { activityQuery } from "@/lib/queries";
+import { Alert } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatDateTime } from "@/lib/format";
+
+export interface ActivityMember {
+  id: string;
+  name: string;
+}
+
+function describeActivity(
+  type: string,
+  actorName: string,
+  metadata: Record<string, unknown>,
+  members: ActivityMember[],
+): string {
+  const nameOf = (id: unknown): string =>
+    typeof id === "string"
+      ? (members.find((m) => m.id === id)?.name ?? `user ${id.slice(0, 8)}`)
+      : "someone";
+  switch (type) {
+    case "created":
+      return "Issue created";
+    case "status_changed": {
+      const from =
+        typeof metadata["from"] === "string" ? metadata["from"] : "?";
+      const to = typeof metadata["to"] === "string" ? metadata["to"] : "?";
+      return `${actorName} changed status ${from} → ${to}`;
+    }
+    case "assigned":
+      return `${actorName} assigned to ${nameOf(metadata["userId"])}`;
+    case "unassigned":
+      return `${actorName} unassigned the issue`;
+    case "comment_added":
+      return `${actorName} commented`;
+    case "regression_detected":
+      return "Regression detected — issue reopened";
+    case "reproduction_generated":
+      return `${actorName} generated a reproduction test`;
+    case "ai_analysis_requested":
+      return `${actorName} requested AI analysis`;
+    case "ai_analysis_completed":
+      return "AI analysis completed";
+    case "ai_analysis_failed":
+      return "AI analysis failed";
+    default:
+      return type;
+  }
+}
+
+/**
+ * Append-only issue activity timeline, newest first. Metadata stays
+ * minimal ({from,to}, {userId}, {commentId}, {reproductionId}) — bodies
+ * and code never appear here. Reproduction rows link to the generation
+ * instead of dumping raw JSON.
+ */
+export function ActivityTimeline({
+  issueId,
+  projectId,
+  members,
+}: {
+  issueId: string;
+  /** Enables the reproduction deep-link; omit to render plain text. */
+  projectId?: string | undefined;
+  members: ActivityMember[];
+}) {
+  const activity = useQuery(activityQuery(issueId, { limit: 50 }));
+
+  if (activity.isPending) {
+    return <Skeleton className="h-24 w-full" />;
+  }
+  if (activity.isError) {
+    return (
+      <Alert variant="destructive" title="Activity unavailable">
+        It may have been deleted or you may not have access.
+      </Alert>
+    );
+  }
+  const items = activity.data?.items ?? [];
+  if (items.length === 0) {
+    return <p className="text-sm text-zinc-500">No activity yet.</p>;
+  }
+  return (
+    <ol className="space-y-2">
+      {items.map(
+        (item: {
+          id: string;
+          type: string;
+          actor: { id: string; name: string } | null;
+          metadata: Record<string, unknown>;
+          createdAt: string;
+        }) => {
+          const reproductionId =
+            item.type === "reproduction_generated" &&
+            typeof item.metadata["reproductionId"] === "string"
+              ? (item.metadata["reproductionId"] as string)
+              : null;
+          return (
+            <li
+              key={item.id}
+              className="flex items-baseline justify-between gap-3 text-sm"
+            >
+              <span>
+                {describeActivity(
+                  item.type,
+                  item.actor?.name ?? "System",
+                  item.metadata,
+                  members,
+                )}
+                {reproductionId !== null && projectId !== undefined ? (
+                  <>
+                    {" · "}
+                    <Link
+                      href={`/app/projects/${projectId}/issues/${issueId}?reproduction=${reproductionId}`}
+                      className="underline"
+                    >
+                      View reproduction
+                    </Link>
+                  </>
+                ) : null}
+              </span>
+              <span
+                className="shrink-0 font-mono text-xs text-zinc-500"
+                title={item.createdAt}
+              >
+                {formatDateTime(item.createdAt)}
+              </span>
+            </li>
+          );
+        },
+      )}
+    </ol>
+  );
+}

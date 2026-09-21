@@ -1,0 +1,143 @@
+# Self-hosting ReplayBug
+
+ReplayBug self-hosts with PostgreSQL and a local filesystem artifact volume.
+The optional full Docker stack requires no Redis, S3/object storage, paid
+service, Ollama, or GitHub integration. Ollama is an optional operator-managed
+AI enhancement and is absent by default.
+
+## Full Docker workflow
+
+[`docker-compose.full.yml`](../docker-compose.full.yml) builds Node 24/pnpm
+workspace source and starts PostgreSQL, API, worker, web, and demo. Images do
+not copy host `node_modules`, `dist`, `.next`, or `.env` files. API and worker
+share a writable artifact volume at `/var/lib/replaybug/artifacts`.
+
+Set secrets and public URLs through your deployment environment (or a
+non-committed Compose environment file), then run migration as a separate,
+explicit operation. Do not put production secrets in image build arguments.
+
+```bash
+export REPLAYBUG_AUTH_SECRET="at-least-32-random-characters"
+export REPLAYBUG_USER_HMAC_SECRET="another-at-least-32-random-characters"
+export REPLAYBUG_WEB_URL="https://replaybug.example.com"
+export REPLAYBUG_API_URL="https://api.replaybug.example.com"
+export NEXT_PUBLIC_REPLAYBUG_API_URL="https://api.replaybug.example.com"
+
+docker compose -f docker-compose.full.yml up -d postgres
+docker compose -f docker-compose.full.yml --profile migrate run --rm migrate
+docker compose -f docker-compose.full.yml up -d api worker web demo
+```
+
+Migrations are intentionally **not** run by API or worker startup. PostgreSQL,
+API, web, and demo have healthchecks, and Compose dependencies wait for health
+rather than using arbitrary sleeps. The worker validates PostgreSQL itself at
+startup.
+
+The dashboard's `NEXT_PUBLIC_REPLAYBUG_API_URL` and the demo's `VITE_*` values
+are embedded at build time. Rebuild those images after changing their public
+URLs. For a same-origin reverse proxy, set
+`NEXT_PUBLIC_REPLAYBUG_API_URL=/api` before building the web image.
+
+## Public demo (opt-in)
+
+Anonymous public-demo reads remain disabled unless `REPLAYBUG_DEMO_MODE=true`.
+After migrations, enable it for API and invoke the explicit profile utility:
+
+```bash
+export REPLAYBUG_DEMO_MODE=true
+docker compose -f docker-compose.full.yml up -d api
+docker compose -f docker-compose.full.yml --profile seed-demo run --rm seed-demo
+```
+
+`seed-demo` is idempotent and always receives `REPLAYBUG_DEMO_MODE=true`; it
+does not run automatically. Leave the variable false or unset when the public
+demo is not wanted. Set `REPLAYBUG_DEMO_PUBLIC_KEY` to the public ingestion key
+used by the demo; the Compose default is a safe synthetic key for local use.
+
+## HTTPS, cookies, and CORS
+
+Put Caddy, nginx, or another TLS-terminating reverse proxy in front of exposed
+services. Terminate HTTPS there, redirect HTTP to HTTPS, and route the web and
+API under the public URLs configured above. A same-origin setup (for example,
+web at `https://replaybug.example.com` and proxy `/api` to API) minimizes CORS
+and cookie complexity. Do not expose PostgreSQL publicly.
+
+Use a long random `REPLAYBUG_AUTH_SECRET` and `REPLAYBUG_USER_HMAC_SECRET`,
+not the local Compose defaults. Configure `REPLAYBUG_WEB_URL` and
+`REPLAYBUG_API_URL` to their externally visible HTTPS origins. Keep
+`REPLAYBUG_TRUSTED_ORIGINS` an exact, comma-separated allow-list of browser
+origins; never use `*` with credentialed requests. If web and API are on
+different origins, configure CORS only for the dashboard origin and verify
+Secure, HttpOnly, and SameSite cookie behavior through the proxy. Set forwarded
+protocol/host headers correctly so auth never treats HTTPS browser traffic as
+plain HTTP.
+
+## Artifact storage
+
+`REPLAYBUG_ARTIFACT_DIR` is the shared artifact root for API and worker. In the
+full stack it is the persistent `replaybug-artifacts` volume mounted at
+`/var/lib/replaybug/artifacts`; both processes need read/write access because
+API uploads files and worker symbolicates and performs durable deletion-outbox
+cleanup. A read-only worker mount is incorrect.
+
+| Variable                                 | Meaning                       | Default                                 |
+| ---------------------------------------- | ----------------------------- | --------------------------------------- |
+| `REPLAYBUG_ARTIFACT_DIR`                 | Shared artifact root          | `~/.replaybug/artifacts` outside Docker |
+| `REPLAYBUG_ARTIFACT_MAX_FILE_BYTES`      | API per-file upload cap       | `26214400` (25 MiB)                     |
+| `REPLAYBUG_ARTIFACT_STAGING_DIR`         | API multipart staging area    | OS temp directory                       |
+| `REPLAYBUG_ARTIFACT_DELETION_BATCH_SIZE` | Worker deletion rows per pass | `100`                                   |
+| `REPLAYBUG_ARTIFACT_DELETION_POLL_MS`    | Worker deletion interval      | `1000` ms                               |
+
+Release uploads use server-generated keys
+`<project-id>/<release-id>/<content-hash>`. A confirmed project or workspace
+delete writes durable deletion-outbox rows in the same transaction; worker
+retries failed unlinks. When storage is unavailable, ingest remains available,
+source-map upload fails safely, and worker falls back to raw stacks.
+
+## Backup and restore
+
+Back up PostgreSQL and artifacts together. A database restore without matching
+artifacts can leave source-map rows referring to unavailable files.
+
+```bash
+# Create a PostgreSQL custom-format dump through the Compose network.
+docker compose -f docker-compose.full.yml exec -T postgres \
+  pg_dump -U replaybug -d replaybug -Fc > replaybug-postgres.dump
+
+# Archive the named artifact volume. Keep this archive beside the DB dump.
+docker run --rm \
+  -v replaybug-full_replaybug-artifacts:/artifacts:ro \
+  -v "$PWD":/backup \
+  alpine:3.21 tar -C /artifacts -czf /backup/replaybug-artifacts.tar.gz .
+
+# Restore into a stopped application stack after starting only PostgreSQL.
+docker compose -f docker-compose.full.yml up -d postgres
+docker compose -f docker-compose.full.yml exec -T postgres \
+  pg_restore -U replaybug -d replaybug --clean --if-exists < replaybug-postgres.dump
+
+# Restore artifact bytes to the same named volume.
+docker run --rm \
+  -v replaybug-full_replaybug-artifacts:/artifacts \
+  -v "$PWD":/backup:ro \
+  alpine:3.21 tar -C /artifacts -xzf /backup/replaybug-artifacts.tar.gz
+```
+
+The actual named-volume prefix can differ when `COMPOSE_PROJECT_NAME` is set;
+use `docker volume ls` and substitute the generated name. Test restore
+procedures on a separate deployment before relying on them.
+
+## Optional local Ollama analysis
+
+Core ingest, grouping, issue detail, timelines, retention, artifact cleanup,
+and deterministic reproduction do not depend on Ollama. To opt in to an
+operator-managed endpoint, configure both API and worker:
+
+```bash
+REPLAYBUG_OLLAMA_URL=http://host.docker.internal:11434
+REPLAYBUG_OLLAMA_MODEL=<your-local-model>
+REPLAYBUG_OLLAMA_TIMEOUT_MS=30000
+```
+
+Set both URL and model or neither. ReplayBug neither downloads models nor
+requires a Compose Ollama service. A down, slow, or misconfigured provider
+only affects AI analysis; it does not make core API readiness fail.

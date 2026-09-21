@@ -1,125 +1,217 @@
 # ReplayBug
 
-Developer observability for reproducible bugs: privacy-safe browser failure
-context, grouped issues, session timelines, and Playwright reproduction
-tests — on a self-hostable stack with no paid services.
+**Turn a browser runtime error into evidence a developer can rerun.**
 
-> **Status: foundation bootstrap only.** The monorepo, tooling, health
-> probes, and smoke screens exist. The product workflow (auth, ingest,
-> grouping, reproductions, dashboard) is not implemented yet.
+ReplayBug captures privacy-safe browser failure context, groups repeated failures,
+shows the semantic timeline that led to an occurrence, maps stacks through uploaded
+source maps, and generates a Playwright test from retained evidence. It is designed
+for self-hosting with PostgreSQL and a local artifact volume—not paid services.
 
-## What exists today
+The synthetic public demo and its local screenshot are portfolio evidence.
 
-- pnpm workspaces + Turborepo monorepo (`apps/*`, `packages/*`)
-- Next.js smoke page at `apps/web` ("ReplayBug" + tagline, light/dark toggle)
-- Fastify API at `apps/api` with `GET /health/live`, `GET /health/ready`
-  (PostgreSQL check), `GET /api/v1/meta`, request IDs, contracts-based
-  error envelope, and OpenAPI docs in non-production (`/docs`)
-- Worker lifecycle skeleton at `apps/worker` (validated config, PG check,
-  graceful shutdown, empty pg-boss job registry)
-- Vite + React smoke screen at `apps/demo` ("ReplayBug Demo App",
-  production source maps enabled)
-- Shared packages: `@replaybug/observability` (Pino), `@replaybug/contracts`
-  (Zod: health, meta, error envelope), `@replaybug/db` (pg + Drizzle config,
-  health helper, no domain tables yet), `@replaybug/sdk` (version metadata
-  only), `@replaybug/cli` (`replaybug --version/--help`), `@replaybug/api-client`
-  (OpenAPI strategy stub), `@replaybug/ui` (`cn` + `Button`), `@replaybug/config`
-  (shared TypeScript presets)
-- PostgreSQL 17 via Docker Compose with healthcheck and persistent volume
-- GitHub Actions CI (format, lint, typecheck, tests with Postgres, build)
+## The workflow
 
-## What is explicitly not built yet
+```mermaid
+flowchart LR
+  SDK[Browser SDK] -->|runtime errors + semantic events| API[Fastify API]
+  CLI[CLI] -->|releases + source maps| API
+  API -->|transactional event outbox| PG[(PostgreSQL)]
+  API -->|artifact uploads| Artifacts[Local source-map artifacts]
+  PG --> Worker[Worker + pg-boss]
+  Artifacts -->|maps for symbolication| Worker
+  Worker -->|mapped evidence + grouping| Issues[Grouped issues]
+  Worker -->|optional, sanitized evidence| Ollama[Local Ollama]
+  Issues --> Dashboard[Next.js dashboard]
+  API --> Dashboard
+  API -->|SSE invalidation| Dashboard
+  Worker --> Repro[Playwright reproduction text]
+  Repro --> Dashboard
+```
 
-Auth, workspaces, projects, telemetry ingest, real SDK capture, issue
-grouping, fingerprinting, functional pg-boss jobs, source maps, Playwright
-generator, functional dashboard, Ollama analysis, invitations, RBAC, and
-functional SSE. See `` for the full plan.
+1. The SDK records runtime errors, failed requests, navigation, clicks, and other
+   bounded semantic context.
+2. Ingest validates, redacts, rate-limits, deduplicates, and commits the event and
+   its outbox handoff together.
+3. The worker symbolicates before deterministic fingerprinting, so repeated failures
+   become a grouped issue with source-mapped evidence when artifacts exist.
+4. An issue detail links an occurrence to its session timeline; a retained occurrence
+   can become a downloadable, developer-run Playwright reproduction.
 
-## Stack
-
-Node.js 24, TypeScript (strict), pnpm workspaces, Turborepo, Next.js (App
-Router) + React + Tailwind CSS, Fastify + Zod, PostgreSQL 17, Drizzle ORM,
-pg-boss (structure only), Pino, Vitest, Vite. No Redis. No paid services.
-
-## Requirements
-
-- Node.js 24
-- pnpm 10 (`npm install -g pnpm@10.17.0` if missing; repo pins `pnpm@10.17.0`
-  via `packageManager`)
-- Docker (for local PostgreSQL; unit tests use mocks and run without it)
+This is intentionally **not** DOM/video replay. It preserves the smallest useful,
+privacy-conscious sequence of events rather than a recording of a user's screen.
 
 ## Quick start
 
+Requirements: Node.js 24, pnpm 10, and Docker for PostgreSQL.
+
 ```bash
-cp .env.example .env        # PowerShell: Copy-Item .env.example .env
+cp .env.example .env                 # PowerShell: Copy-Item .env.example .env
 docker compose up -d postgres
 pnpm install
+pnpm db:migrate
+pnpm db:seed                         # development-only tenancy seed
 pnpm dev
 ```
 
-Seed/migration commands (`pnpm db:migrate`, `pnpm db:seed`) arrive with the
-first domain tables and are not available in this block.
+`pnpm dev` starts web, API, worker, and the deliberately buggy demo. Configure the
+required URLs, auth secrets, and trusted origins in `.env`; see
+[the self-hosting guide](docs/self-hosting.md) for the full environment and Docker
+flow. Local email/password auth is available; GitHub OAuth is optional when it is
+configured.
 
-## Ports
+## Public synthetic demo
 
-| Service                 | Default | Variable                  |
-| ----------------------- | ------- | ------------------------- |
-| web                     | 3000    | `REPLAYBUG_WEB_PORT`      |
-| api                     | 4001    | `REPLAYBUG_API_PORT`      |
-| demo                    | 5173    | `REPLAYBUG_DEMO_PORT`     |
-| postgres (host mapping) | 5544    | `REPLAYBUG_POSTGRES_PORT` |
+`/demo` is an anonymous **read-only** portfolio view backed by a designated synthetic
+demo project. Its API is limited to bounded `GET /api/v1/public-demo/*` responses;
+no authenticated route or mutation is reused. It is off unless
+`REPLAYBUG_DEMO_MODE=true`.
 
-`pnpm dev` starts web + api + worker + demo concurrently with prefixed logs
-via Turborepo. API docs (non-production): `http://localhost:4001/docs`.
+For the full local demo, start the Docker stack, enable the flag for API, then seed
+explicitly:
 
-## Quality commands
+```bash
+export REPLAYBUG_DEMO_MODE=true
+docker compose -f docker-compose.full.yml up -d postgres
+docker compose -f docker-compose.full.yml --profile migrate run --rm migrate
+docker compose -f docker-compose.full.yml up -d api worker web demo
+docker compose -f docker-compose.full.yml --profile seed-demo run --rm seed-demo
+```
+
+Open `http://localhost:3000/demo`, select a synthetic issue, inspect its occurrence
+and timeline, then optionally open the intentionally buggy app. Do not use the
+public-demo project for real telemetry. The detailed
+[Docker instructions](docker/README.md) and [self-hosting guide](docs/self-hosting.md)
+cover URLs, TLS, storage, backup, and reset behavior.
+
+![Synthetic public demo](docs/screenshots/public-demo.png)
+
+This screenshot is synthetic local evidence captured from the full Docker stack; it does not prove remote CI.
+
+## SDK and CLI
+
+Initialize the current browser SDK with a public ingest DSN. The public key is
+browser-visible by design and is restricted to telemetry ingest; do not substitute a
+secret CLI token.
+
+```ts
+import { init } from "@replaybug/sdk";
+
+init({
+  dsn: "https://rb_pk_<public-ingest-key>@api.example.com/api/ingest/v1",
+  environment: "production",
+  release: "web@1.4.2",
+  captureSafeInputs: false, // default: input values are not captured
+});
+```
+
+Release automation uses a project-scoped secret token only through
+`REPLAYBUG_AUTH_TOKEN`—there is deliberately no `--token` flag:
+
+```bash
+pnpm build # once; the CLI runs from its built dist/
+export REPLAYBUG_AUTH_TOKEN='rb_sk_<redacted>'
+node packages/cli/bin/replaybug.js projects info
+node packages/cli/bin/replaybug.js releases create 'web@1.4.2' --commit-sha 9f3c2ab1
+node packages/cli/bin/replaybug.js sourcemaps upload ./dist --release 'web@1.4.2'
+```
+
+See the [CLI reference](docs/cli.md), [credential-separation ADR](docs/adr/0002-public-ingest-key-versus-secret-token-separation.md), and [source-map design](docs/architecture/source-maps.md).
+
+## What a generated reproduction looks like
+
+ReplayBug renders code; it does not execute a customer's site. A developer reviews
+and runs the downloaded test locally. The following is representative generated
+Playwright output: it uses a semantic locator, asserts the captured failure, and
+keeps sensitive input as a required placeholder.
+
+```ts
+import { expect, test } from "@playwright/test";
+
+test("reproduces captured issue", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await page.goto("http://localhost:5173/");
+  await page.getByTestId("demo-uncaught-error").click();
+  await page.getByLabel("Email").fill("REPLACE_WITH_TEST_VALUE");
+
+  await expect
+    .poll(() =>
+      pageErrors.some((message) =>
+        message.includes("DEMO: Uncaught error after navigation and click"),
+      ),
+    )
+    .toBe(true);
+});
+```
+
+Locator preference is `test_id`, role/name, label, id, name, then a warned CSS
+fallback. Navigation is reduced to safe same-origin routes, and sensitive values are
+redacted before rendering. Details: [reproduction generator](docs/architecture/reproduction-generator.md).
+
+## Privacy, governance, and retention
+
+- Input-value capture is opt-in; password, token, card-like, and marked values are
+  redacted. Server-side sanitization is a second boundary.
+- Workspaces use owner/admin/member/viewer roles, audit sensitive governance actions,
+  and keep public ingest keys, secret CLI tokens, and dashboard sessions separate.
+- Project retention is 7–365 days. Bounded worker cleanup removes eligible raw events
+  while preserving lifetime issue aggregates; confirmed project/workspace deletion
+  queues local artifact deletion durably.
+- Optional local Ollama analysis receives a bounded sanitized evidence bundle and
+  stores only validated, hypothesis-labeled output. It is disabled unless an operator
+  configures both URL and model; core processing never requires it.
+
+Read [tenancy and retention](docs/architecture/tenancy.md),
+[optional local AI](docs/architecture/ai-analysis.md), and the
+[privacy-defaults ADR](docs/adr/0005-privacy-safe-input-defaults.md).
+
+## Testing and proof
+
+Run focused local checks as appropriate:
 
 ```bash
 pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm api:check
 pnpm build
-node packages/cli/bin/replaybug.js --version
+pnpm test:e2e
+pnpm test:browser-compat
+pnpm verify:generated-test
+pnpm benchmark:ingest
 ```
 
-## Monorepo structure
+The [verification map](docs/acceptance.md) connects commands, routes, and
+documentation to the covered behavior. [Performance notes](docs/performance.md) describe
+the self-contained local benchmark and record only actual measured output. The configured
+[GitHub Actions workflow](.github/workflows/ci.yml) covers format, lint, typecheck,
+test, build, OpenAPI, E2E, browser-compatibility, size, and dependency-audit gates.
 
-```text
-replaybug/
-├─ apps/
-│  ├─ web/        # Next.js dashboard smoke screen
-│  ├─ api/        # Fastify health + meta API
-│  ├─ worker/     # Worker lifecycle skeleton (pg-boss registry stub)
-│  └─ demo/       # Vite smoke screen (source maps on)
-├─ packages/
-│  ├─ sdk/            # Browser SDK metadata only
-│  ├─ cli/            # replaybug --version/--help
-│  ├─ db/             # pg + Drizzle infra (no domain tables yet)
-│  ├─ contracts/      # Zod health/meta/error contracts
-│  ├─ api-client/     # OpenAPI client strategy stub
-│  ├─ ui/             # cn + Button (shadcn-compatible base)
-│  ├─ observability/  # Pino logger factory
-│  └─ config/         # Shared tsconfig presets
-├─ docs/
-│  ├─ specs/replaybug-master-spec.md
-│  └─ adr/
-├─ scripts/
-├─ docker/
-├─ .github/workflows/
-├─ docker-compose.yml
-└─ README.md
-```
+## Architecture and operations
 
-No application imports private internals from another application; shared
-behavior lives in `packages/*` with explicit `exports`.
+- [Architecture overview](docs/architecture.md)
+- [Dashboard](docs/architecture/dashboard.md) · [frontend](docs/architecture/frontend.md) · [realtime SSE](docs/architecture/realtime.md)
+- [Fingerprinting](docs/architecture/fingerprinting.md) · [worker/outbox](docs/architecture/worker.md) · [source maps](docs/architecture/source-maps.md)
+- [Reproduction generator](docs/architecture/reproduction-generator.md) · [tenancy/governance](docs/architecture/tenancy.md) · [optional AI](docs/architecture/ai-analysis.md)
+- [CLI](docs/cli.md) · [self-hosting](docs/self-hosting.md) · [full Docker stack](docker/README.md)
+- [ADRs](docs/adr/README.md) · [verification map](docs/acceptance.md) · [performance](docs/performance.md)
 
-## Specification
+## Trade-offs and non-goals
 
-The source of truth is
-[``]().
-Foundation decisions never override it.
+ReplayBug favors explainable, privacy-safe evidence over video/DOM replay. It has no
+Redis, mandatory object store, paid service, hosted execution, billing, SSO, SMTP,
+remote source-map fetches, hosted/paid LLM provider, automatic fixes, or arbitrary
+customer Playwright execution. Artifact storage is local-first and single-node today;
+the storage seam leaves room for a future backend without making one required.
+
+## Project status
+
+The repository includes the portfolio/demo work and a configured GitHub Actions
+workflow. See the [verification map](docs/acceptance.md) for local checks, workflow
+coverage, routes, and documentation evidence.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE) © ReplayBug Contributors.

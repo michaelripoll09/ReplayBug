@@ -1,16 +1,82 @@
-# Docker
+# Full self-hosted Docker stack
 
-This directory holds supporting files for containerized runs.
+`docker-compose.full.yml` is an optional, source-built self-hosting stack. It
+runs PostgreSQL, the Fastify API, the background worker, the Next.js dashboard,
+and the production-built Vite demo. It has no dependency on Redis, S3, a paid
+service, Ollama, or GitHub.
 
-## Current state (foundation)
+The existing root `docker-compose.yml` remains the small local PostgreSQL-only
+setup. Use this file when a complete local or self-hosted stack is wanted.
 
-Local development needs only PostgreSQL from the root `docker-compose.yml`:
+## Start workflow
+
+Set production secrets and public URLs in the shell or a deployment-managed
+Compose environment file. Do not bake `.env` into an image or commit it.
 
 ```bash
-docker compose up -d postgres
+export REPLAYBUG_AUTH_SECRET="at-least-32-random-characters"
+export REPLAYBUG_USER_HMAC_SECRET="another-at-least-32-random-characters"
+export REPLAYBUG_WEB_URL="https://replaybug.example.com"
+export REPLAYBUG_API_URL="https://api.replaybug.example.com"
+export NEXT_PUBLIC_REPLAYBUG_API_URL="https://api.replaybug.example.com"
 ```
 
-The full self-hosted stack (web, api, worker, demo containers with
-persistent volumes) arrives in a later block per the master specification.
-The authoritative topology is documented in
-`` sections 55-56.
+Build and start PostgreSQL first, then run migrations deliberately. Application
+startup never runs migrations.
+
+```bash
+docker compose -f docker-compose.full.yml up -d postgres
+docker compose -f docker-compose.full.yml --profile migrate run --rm migrate
+docker compose -f docker-compose.full.yml up -d api worker web demo
+```
+
+`postgres`, `api`, `web`, and `demo` have healthchecks. Service dependencies
+wait for the relevant healthcheck; there are no fixed startup sleeps. The
+worker waits for healthy PostgreSQL and validates its database connection on
+startup.
+
+## Optional public demo seed
+
+The public demo is disabled in the API unless `REPLAYBUG_DEMO_MODE=true`. Set
+it before starting API if anonymous public-demo routes are intended, migrate
+the database, then seed explicitly:
+
+```bash
+export REPLAYBUG_DEMO_MODE=true
+docker compose -f docker-compose.full.yml up -d api
+docker compose -f docker-compose.full.yml --profile seed-demo run --rm seed-demo
+```
+
+The seed service always supplies `REPLAYBUG_DEMO_MODE=true` to meet the seed
+script's safety check. It is idempotent; use `pnpm demo:reset` outside Compose
+only when intentionally replacing the synthetic demo data.
+
+## Images and storage
+
+`docker/Dockerfile` is target-aware and uses Node 24 with pnpm 10.17. Every
+Node target installs with `pnpm install --frozen-lockfile`, builds workspace
+source, and deploys only production dependencies to the API, worker, or web
+runtime. The API runs built Fastify, the worker runs its built runtime, the web
+runs `next start`, and the demo is served by unprivileged nginx from Vite's
+production `dist` output.
+
+The Dockerfile explicitly excludes host `node_modules`, `dist`, `.next`, and
+`.env` files during source copy. Node runtimes run as the unprivileged `node`
+user. API and worker both mount the same writable `replaybug-artifacts` volume
+at `/var/lib/replaybug/artifacts`; do not make the worker mount read-only.
+
+## Configuration notes
+
+- PostgreSQL host access defaults to `localhost:5544`; API, worker, and tools
+  use the internal `postgres:5432` address.
+- Compose defaults are local bootstrap values only. Replace database and app
+  secrets before exposing a deployment.
+- `NEXT_PUBLIC_REPLAYBUG_API_URL` and Vite `VITE_*` values are build-time
+  browser configuration. Rebuild web/demo after changing them.
+- Ollama is absent and disabled by default. To use an operator-provided
+  instance, set both `REPLAYBUG_OLLAMA_URL` and `REPLAYBUG_OLLAMA_MODEL` on API
+  and worker; do not add it as a required service.
+- GitHub integration is not required by this stack.
+
+See [`docs/self-hosting.md`](../docs/self-hosting.md) for reverse-proxy,
+backup, restore, cookie, and CORS guidance.

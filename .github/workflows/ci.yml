@@ -74,6 +74,10 @@ jobs:
           --health-retries 10
     env:
       REPLAYBUG_DATABASE_URL: postgres://replaybug:replaybug@localhost:5544/replaybug
+      # Hermetic artifact storage: per-run temp FS dirs (no paid service,
+      # no S3, no external map server). Suites that need storage
+      # inject their own temp dirs; this keeps any shared-contract default
+      # (LocalArtifactStorage.fromEnv) off the runner home directory.
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -84,7 +88,79 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: configure artifact temp directories
+        shell: bash
+        run: |
+          echo "REPLAYBUG_ARTIFACT_DIR=$RUNNER_TEMP/replaybug-artifacts-test" >> "$GITHUB_ENV"
+          echo "REPLAYBUG_ARTIFACT_STAGING_DIR=$RUNNER_TEMP/replaybug-artifacts-staging-test" >> "$GITHUB_ENV"
+      # Covers unit tests plus real-PostgreSQL integration suites:
+      # migrations (packages/db), ingest (apps/api) and the worker pipeline
+      # (apps/worker: pg-boss startup, outbox dispatch, event processing,
+      # issue grouping, concurrency, regression, retries, poison jobs).
+      # Artifact and source-map suites run inside the same gate (real PG +
+      # real FS temp dirs): secret-token security matrix + log-leak capture
+      # (apps/api), CLI integration including the built binary (packages/cli),
+      # release API and preflight/upload/traversal/MIME/limit/hash/
+      # compensation (apps/api artifact + CLI routes), source-map unit +
+      # column + sourceMappingURL SSRF suites and worker symbolication A-F +
+      # mapped-fingerprint cross-release integration (apps/worker),
+      # storage-outage degradation (apps/api), and minified demo scenario
+      # unit tests (apps/demo).
       - run: pnpm test
+
+  isolation:
+    name: integration isolation
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: replaybug
+          POSTGRES_PASSWORD: replaybug
+          POSTGRES_DB: replaybug
+        ports:
+          - 5544:5432
+        options: >-
+          --health-cmd "pg_isready -U replaybug -d replaybug"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REPLAYBUG_DATABASE_URL: postgres://replaybug:replaybug@localhost:5544/replaybug
+      # Hermetic per-run artifact directories mirror the tests job.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: configure artifact temp directories
+        shell: bash
+        run: |
+          echo "REPLAYBUG_ARTIFACT_DIR=$RUNNER_TEMP/replaybug-artifacts-isolation" >> "$GITHUB_ENV"
+          echo "REPLAYBUG_ARTIFACT_STAGING_DIR=$RUNNER_TEMP/replaybug-artifacts-staging-isolation" >> "$GITHUB_ENV"
+      - run: pnpm test:isolation
+
+  openapi-drift:
+    name: openapi-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # api:generate prepares its own workspace build closure (Turbo ^build),
+      # so this is safe on a clean checkout with no prebuilt dist/.
+      - run: pnpm api:check
 
   build:
     name: build
@@ -100,3 +176,138 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+  e2e:
+    name: e2e (playwright chromium)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: replaybug
+          POSTGRES_PASSWORD: replaybug
+          POSTGRES_DB: replaybug
+        ports:
+          - 5544:5432
+        options: >-
+          --health-cmd "pg_isready -U replaybug -d replaybug"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REPLAYBUG_DATABASE_URL: postgres://replaybug:replaybug@localhost:5544/replaybug
+      REPLAYBUG_AUTH_SECRET: test-secret-0123456789abcdef0123456789
+      REPLAYBUG_WEB_URL: http://localhost:3000
+      REPLAYBUG_API_URL: http://localhost:4001
+      REPLAYBUG_TRUSTED_ORIGINS: http://localhost:3000
+      REPLAYBUG_USER_HMAC_SECRET: test-hmac-secret-0123456789abcdef0123456789
+      NEXT_PUBLIC_REPLAYBUG_API_URL: http://localhost:4001
+      # Per-run temp artifact root for the E2E API server (mirrors the
+      # Playwright webServer default; keeps CI hermetic and off any shared
+      # directory). The minified source-map full-flow specs
+      # (releases-sourcemaps, sourcemaps-full-flow) spawn their worker
+      # against the same root.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: configure artifact temp directory
+        shell: bash
+        run: |
+          echo "REPLAYBUG_ARTIFACT_DIR=$RUNNER_TEMP/replaybug-artifacts-e2e" >> "$GITHUB_ENV"
+      - run: pnpm db:migrate
+      - run: pnpm build
+      - run: pnpm --filter @replaybug/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @replaybug/demo exec playwright install --with-deps chromium
+      # Web E2E covers release/token UI specs and the minified source-map
+      # full flow (CLI create/upload → minified browser error → worker
+      # symbolication → mapped issue, cross-release grouping, missing-map,
+      # and revoked-token degradation). Demo E2E covers ingest, privacy, and
+      # worker flows. Reproduction specs run in both suites
+      # (web e2e/reproduction.spec.ts, demo e2e/reproduction-assertions.spec.ts).
+      - run: pnpm --filter @replaybug/web test:e2e
+      - run: pnpm --filter @replaybug/demo test:e2e
+      # Generated-test verifier: builds a deterministic fixture spec with
+      # the real generator, syntax-checks it, and executes it
+      # against a loopback-only local demo (never a remote target). The
+      # fixture replays the demo's uncaught-error scenario, so a passing
+      # run proves the expected failure was observed.
+      - name: generated-test verifier (local demo only)
+        run: |
+          node -e "
+          import('./packages/reproducer/dist/index.js').then(async (gen) => {
+            const fs = await import('node:fs');
+            const plan = gen.buildReproductionPlan({
+              issueId: '11111111-2222-4333-8444-555555555555',
+              issueTitle: 'CI verifier fixture',
+              issueType: 'exception',
+              occurrenceEventId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+              environment: 'ci',
+              baseUrl: 'http://localhost:5173',
+              timeline: [
+                { sequenceNumber: 1, occurredAt: '2026-09-01T00:00:00Z', id: 'a', eventType: 'navigation', payload: { to_url: 'http://localhost:5173/' } },
+                { sequenceNumber: 2, occurredAt: '2026-09-01T00:00:01Z', id: 'b', eventType: 'click', payload: { locator_candidates: [{ type: 'test_id', value: 'demo-uncaught-error', confidence: 1 }], element_tag: 'button' } },
+              ],
+              failure: { kind: 'exception', expectedType: 'Error', expectedMessage: 'DEMO: Uncaught error after navigation and click' },
+            });
+            const rendered = gen.renderPlaywrightTest(plan);
+            fs.writeFileSync('${{ runner.temp }}/verifier-fixture.spec.ts', rendered.code);
+            console.log('fixture bytes: ' + Buffer.byteLength(rendered.code));
+          });
+          "
+          (pnpm --filter @replaybug/demo exec vite --port 5173 --strictPort &> ${{ runner.temp }}/verifier-demo.log & echo $! > ${{ runner.temp }}/verifier-demo.pid)
+          for i in $(seq 1 60); do curl -sf http://localhost:5173/ > /dev/null && break; sleep 2; done
+          pnpm verify:generated-test -- --code-file ${{ runner.temp }}/verifier-fixture.spec.ts --target http://localhost:5173
+          kill $(cat ${{ runner.temp }}/verifier-demo.pid)
+
+  sdk-size:
+    name: sdk-size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm sdk:size
+
+  browser-compat:
+    name: browser compatibility (chromium, firefox, webkit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @replaybug/demo exec playwright install --with-deps chromium firefox webkit
+      - run: pnpm test:browser-compat
+
+  dependency-audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high

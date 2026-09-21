@@ -1,26 +1,42 @@
 /**
- * @replaybug/api-client — foundation boundary stub.
+ * @replaybug/api-client — typed dashboard client derived from OpenAPI.
  *
- * Strategy (per master spec section 7.2 / 46): the future typed dashboard
- * client will be derived from the Fastify OpenAPI document using
- * `openapi-fetch` + `openapi-typescript` so client types cannot drift from
- * the server schemas. That generator wiring arrives with the first real
- * business endpoints.
- *
- * Until then this package intentionally exports only a minimal, honest
- * placeholder. It does not invent resource types for workspaces, projects,
- * issues or sessions.
+ * Source of truth: the Fastify route schemas. Regenerate with
+ * `pnpm api:generate` (builds the Fastify instance in-process, calls
+ * `app.swagger()`, writes `openapi/openapi.json`, then runs
+ * `openapi-typescript` to `src/schema.d.ts`). Never hand-edit the generated
+ * files; CI fails on drift (`pnpm api:generate` + `git diff --exit-code`).
  */
 
+export {
+  createReplayBugApiClient,
+  type CreateReplayBugApiClientOptions,
+  type ReplayBugApiClient,
+  type ReplayBugApiPaths,
+  type ReplayBugFetchClient,
+} from "./client.js";
+export {
+  ApiError,
+  normalizeApiError,
+  validationDetails,
+  type ApiErrorBody,
+  type NormalizeErrorInput,
+} from "./errors.js";
+
+/** @deprecated Use `createReplayBugApiClient` (typed OpenAPI client). */
 export interface ApiClientOptions {
   baseUrl: string;
 }
 
+/** @deprecated Use `ReplayBugApiClient`. */
 export interface ApiClient {
   readonly baseUrl: string;
 }
 
-/** Create a minimal API client handle carrying the configured base URL. */
+/**
+ * @deprecated Minimal foundation handle. Prefer `createReplayBugApiClient`,
+ * which carries the same normalized baseUrl plus the typed fetch client.
+ */
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const normalized = options.baseUrl.replace(/\/+$/, "");
   if (normalized.length === 0) {

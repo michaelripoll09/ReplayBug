@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
+import Fastify from "fastify";
 import { errorEnvelopeSchema } from "@replaybug/contracts";
+import {
+  DEFAULT_ARTIFACT_MAX_FILE_BYTES,
+  PREFLIGHT_MAX_ENTRIES,
+  UPLOAD_AGGREGATE_MAX_BYTES,
+} from "@replaybug/artifacts";
+import { createLogger } from "@replaybug/observability";
 import { buildApp } from "./app.js";
 import { type ApiConfig } from "./config.js";
+import { type AppInstance } from "./instance.js";
+import { registerHealthRoutes } from "./routes/health.js";
 
 const baseConfig: ApiConfig = {
   port: 4001,
@@ -11,6 +20,20 @@ const baseConfig: ApiConfig = {
   version: "0.1.0",
   databaseUrl: "postgres://localhost:5432/replaybug",
   logLevel: "silent",
+  authSecret: "test-secret-0123456789abcdef0123456789",
+  webUrl: "http://localhost:3000",
+  apiUrl: "http://localhost:4001",
+  trustedOrigins: ["http://localhost:3000"],
+  ingestMaxBatchEvents: 50,
+  ingestMaxBodyBytes: 512 * 1024,
+  ingestMaxEventBytes: 128 * 1024,
+  ingestRateLimitRequestsPerMinute: 60,
+  ingestRateLimitEventsPerMinute: 1000,
+  userHmacSecret: "test-hmac-secret-0123456789abcdef0123456789",
+  artifactMaxFileBytes: DEFAULT_ARTIFACT_MAX_FILE_BYTES,
+  artifactPreflightMaxEntries: PREFLIGHT_MAX_ENTRIES,
+  artifactAggregateMaxBytes: UPLOAD_AGGREGATE_MAX_BYTES,
+  aiAnalysis: { status: "disabled", configured: false },
 };
 
 describe("GET /health/live", () => {
@@ -46,7 +69,7 @@ describe("GET /health/ready", () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({
         status: "ready",
-        checks: { database: "up" },
+        checks: { database: "up", artifactStorage: "up" },
       });
     } finally {
       await app.close();
@@ -66,11 +89,82 @@ describe("GET /health/ready", () => {
       expect(response.statusCode).toBe(503);
       expect(response.json()).toEqual({
         status: "not-ready",
-        checks: { database: "down" },
+        checks: { database: "down", artifactStorage: "up" },
       });
     } finally {
       await app.close();
     }
+  });
+});
+
+describe("GET /health/ready artifact-storage probe", () => {
+  async function readyBody(options: {
+    checkDatabase: () => Promise<boolean>;
+    checkArtifactStorage?: () => Promise<boolean>;
+  }): Promise<{ statusCode: number; body: unknown }> {
+    const instance: AppInstance = Fastify({
+      loggerInstance: createLogger({ service: "api", level: "silent" }),
+    });
+    await registerHealthRoutes(instance, options);
+    try {
+      const response = await instance.inject({
+        method: "GET",
+        url: "/health/ready",
+      });
+      return { statusCode: response.statusCode, body: response.json() };
+    } finally {
+      await instance.close();
+    }
+  }
+
+  it("stays 200 ready when storage is down (ingest must not fail)", async () => {
+    const { statusCode, body } = await readyBody({
+      checkDatabase: async () => true,
+      checkArtifactStorage: async () => false,
+    });
+    expect(statusCode).toBe(200);
+    expect(body).toEqual({
+      status: "ready",
+      checks: { database: "up", artifactStorage: "down" },
+    });
+  });
+
+  it("reports storage up when the probe succeeds", async () => {
+    const { statusCode, body } = await readyBody({
+      checkDatabase: async () => true,
+      checkArtifactStorage: async () => true,
+    });
+    expect(statusCode).toBe(200);
+    expect(body).toEqual({
+      status: "ready",
+      checks: { database: "up", artifactStorage: "up" },
+    });
+  });
+
+  it("reports a throwing probe as down instead of 500ing", async () => {
+    const { statusCode, body } = await readyBody({
+      checkDatabase: async () => true,
+      checkArtifactStorage: async () => {
+        throw new Error("simulated storage outage");
+      },
+    });
+    expect(statusCode).toBe(200);
+    expect(body).toEqual({
+      status: "ready",
+      checks: { database: "up", artifactStorage: "down" },
+    });
+  });
+
+  it("keeps the storage status visible on the 503 path", async () => {
+    const { statusCode, body } = await readyBody({
+      checkDatabase: async () => false,
+      checkArtifactStorage: async () => true,
+    });
+    expect(statusCode).toBe(503);
+    expect(body).toEqual({
+      status: "not-ready",
+      checks: { database: "down", artifactStorage: "up" },
+    });
   });
 });
 
@@ -87,6 +181,7 @@ describe("GET /api/v1/meta", () => {
         service: "api",
         version: "0.1.0",
         environment: "test",
+        auth: { github: false },
       });
     } finally {
       await app.close();

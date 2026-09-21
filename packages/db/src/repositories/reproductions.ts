@@ -32,6 +32,24 @@ export interface CreatePendingReproductionInput {
   idempotencyKeyHash?: string | null;
 }
 
+function pendingReproductionValues(input: CreatePendingReproductionInput) {
+  return {
+    issueId: input.issueId,
+    eventId: input.eventId,
+    generatedByUserId: input.generatedByUserId,
+    language: input.language ?? "typescript",
+    framework: input.framework ?? "playwright",
+    code: null,
+    hasRedactedSteps: false,
+    generatorVersion: input.generatorVersion,
+    status: "pending" as const,
+    errorCode: null,
+    errorMessage: null,
+    completedAt: null,
+    idempotencyKeyHash: input.idempotencyKeyHash ?? null,
+  };
+}
+
 /**
  * Inserts a pending reproduction row. Callers insert the generation outbox
  * row in the same transaction via `insertReproductionOutbox`.
@@ -42,27 +60,67 @@ export async function insertPendingReproduction(
 ): Promise<ReproductionRow> {
   const rows = await tx
     .insert(reproductionTests)
-    .values({
-      issueId: input.issueId,
-      eventId: input.eventId,
-      generatedByUserId: input.generatedByUserId,
-      language: input.language ?? "typescript",
-      framework: input.framework ?? "playwright",
-      code: null,
-      hasRedactedSteps: false,
-      generatorVersion: input.generatorVersion,
-      status: "pending",
-      errorCode: null,
-      errorMessage: null,
-      completedAt: null,
-      idempotencyKeyHash: input.idempotencyKeyHash ?? null,
-    })
+    .values(pendingReproductionValues(input))
     .returning();
   const row = rows[0];
   if (row === undefined) {
     throw new Error("Failed to insert pending reproduction");
   }
   return row;
+}
+
+export interface InsertPendingReproductionIdempotentlyResult {
+  row: ReproductionRow;
+  inserted: boolean;
+}
+
+/**
+ * Atomically inserts one logical reproduction request or returns its canonical
+ * row. The database constraint covers user, event, generator version, and
+ * idempotency hash; callers add an outbox row only when `inserted` is true.
+ */
+export async function insertPendingReproductionIdempotently(
+  tx: DbTransaction,
+  input: CreatePendingReproductionInput & {
+    eventId: string;
+    generatedByUserId: string;
+    idempotencyKeyHash: string;
+  },
+): Promise<InsertPendingReproductionIdempotentlyResult> {
+  const rows = await tx
+    .insert(reproductionTests)
+    .values(pendingReproductionValues(input))
+    .onConflictDoNothing({
+      target: [
+        reproductionTests.generatedByUserId,
+        reproductionTests.eventId,
+        reproductionTests.generatorVersion,
+        reproductionTests.idempotencyKeyHash,
+      ],
+    })
+    .returning();
+  const inserted = rows[0];
+  if (inserted !== undefined) {
+    return { row: inserted, inserted: true };
+  }
+
+  const existing = await tx
+    .select()
+    .from(reproductionTests)
+    .where(
+      and(
+        eq(reproductionTests.generatedByUserId, input.generatedByUserId),
+        eq(reproductionTests.eventId, input.eventId),
+        eq(reproductionTests.generatorVersion, input.generatorVersion),
+        eq(reproductionTests.idempotencyKeyHash, input.idempotencyKeyHash),
+      ),
+    )
+    .limit(1);
+  const row = existing[0];
+  if (row === undefined) {
+    throw new Error("Failed to read canonical idempotent reproduction");
+  }
+  return { row, inserted: false };
 }
 
 /** Reads one reproduction by id (no lock). */

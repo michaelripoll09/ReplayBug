@@ -564,35 +564,25 @@ export async function requestReproduction(
   );
   requireWorkspaceCapability(membership, "reproduction:generate");
 
-  const existing = await ReproductionRepo.findReproductionByIdempotency(
-    db,
-    hash,
-  );
-  if (
-    existing !== undefined &&
-    existing.generatedByUserId === userId &&
-    existing.eventId === eventId &&
-    existing.generatorVersion === REPRODUCTION_GENERATOR_VERSION
-  ) {
-    return { row: existing, deduplicated: true };
-  }
-
   const input = await buildGenerationInput(db, eventId);
 
-  const row = await db.transaction(async (tx) => {
-    const inserted = await ReproductionRepo.insertPendingReproduction(tx, {
-      issueId: input.issueId,
-      eventId: event.id,
-      generatedByUserId: userId,
-      generatorVersion: REPRODUCTION_GENERATOR_VERSION,
-      language: "typescript",
-      framework: "playwright",
-      idempotencyKeyHash: hash,
-    });
-    await ReproductionRepo.insertReproductionOutbox(tx, inserted.id);
-    return inserted;
+  const result = await db.transaction(async (tx) => {
+    const created =
+      await ReproductionRepo.insertPendingReproductionIdempotently(tx, {
+        issueId: input.issueId,
+        eventId: event.id,
+        generatedByUserId: userId,
+        generatorVersion: REPRODUCTION_GENERATOR_VERSION,
+        language: "typescript",
+        framework: "playwright",
+        idempotencyKeyHash: hash,
+      });
+    if (created.inserted) {
+      await ReproductionRepo.insertReproductionOutbox(tx, created.row.id);
+    }
+    return created;
   });
-  return { row, deduplicated: false };
+  return { row: result.row, deduplicated: !result.inserted };
 }
 
 export function toSummaryDTO(

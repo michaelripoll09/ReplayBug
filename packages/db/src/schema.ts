@@ -1013,9 +1013,10 @@ export const aiAnalysisOutbox = pgTable(
  *
  * `event_id` and `generated_by_user_id` are nullable with SET NULL so raw
  * occurrence expiry or user deletion never deletes reproduction history.
- * `idempotency_key_hash` backs request dedup (find-by-hash); NULL means
- * "no idempotency key supplied". `completed_at` is set exactly once when
- * the worker marks the row ready/failed.
+ * `idempotency_key_hash` with user, event, and generator version forms the
+ * database-enforced request identity; NULL means "no idempotency key
+ * supplied". `completed_at` is set exactly once when the worker marks the
+ * row ready/failed.
  */
 export const reproductionTests = pgTable(
   "reproduction_tests",
@@ -1052,6 +1053,12 @@ export const reproductionTests = pgTable(
       t.createdAt,
     ),
     index("reproduction_tests_status_idx").on(t.status),
+    unique("reproduction_tests_idempotency_unique").on(
+      t.generatedByUserId,
+      t.eventId,
+      t.generatorVersion,
+      t.idempotencyKeyHash,
+    ),
     check(
       "reproduction_tests_status_check",
       sql`${t.status} IN ('pending','ready','failed')`,

@@ -268,21 +268,28 @@ describe("reproductions integration (real PG)", () => {
   it("deduplicates concurrent same Idempotency-Key requests", async () => {
     const s = await seed("idem");
     const key = randomUUID();
-    const results = await Promise.all([
-      postRepro(s.cookie, s.eventId, key),
-      postRepro(s.cookie, s.eventId, key),
-      postRepro(s.cookie, s.eventId, key),
-    ]);
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () => postRepro(s.cookie, s.eventId, key)),
+    );
     const ids = results.map((r) => r.body["id"] as string);
     expect(new Set(ids).size).toBe(1);
-    // First is 202, rest are 200 deduplicated.
-    expect(results.map((r) => r.status).sort()).toEqual([200, 200, 202]);
+    expect(results.filter((r) => r.status === 202)).toHaveLength(1);
+    expect(results.filter((r) => r.status === 200)).toHaveLength(11);
 
     const count = await dbClient.pool.query(
       `SELECT COUNT(*)::int AS n FROM reproduction_tests WHERE event_id = $1`,
       [s.eventId],
     );
     expect(count.rows[0]?.["n"]).toBe(1);
+    const outbox = await dbClient.pool.query(
+      `SELECT COUNT(*)::int AS n
+       FROM reproduction_generation_outbox AS outbox
+       JOIN reproduction_tests AS reproduction
+         ON reproduction.id = outbox.reproduction_id
+       WHERE reproduction.event_id = $1`,
+      [s.eventId],
+    );
+    expect(outbox.rows[0]?.["n"]).toBe(1);
 
     await runWorker(ids[0] as string);
     const activity = await dbClient.pool.query(

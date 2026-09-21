@@ -588,8 +588,8 @@ describe("migrations against real PostgreSQL", () => {
         `SELECT COUNT(*)::int AS count FROM drizzle.__drizzle_migrations`,
       );
       // One journal row per migration file
-      // (0000 through 0008), never duplicated.
-      expect(journal.rows[0]?.count).toBe(9);
+      // (0000 through 0009), never duplicated.
+      expect(journal.rows[0]?.count).toBe(10);
     });
   });
 
@@ -1354,7 +1354,8 @@ describe("migrations against real PostgreSQL", () => {
     const eventId = "44444444-4444-4444-8444-444444444444";
     const issueId = "55555555-5555-4555-8555-555555555555";
     const releaseId = "66666666-6666-4666-8666-666666666666";
-    const reproductionId = "77777777-7777-4777-8777-777777777777";
+    const earlierPendingReproductionId = "77777777-7777-4777-8777-777777777777";
+    const laterReadyReproductionId = "99999999-9999-4999-8999-999999999999";
     const analysisId = "88888888-8888-4888-8888-888888888888";
 
     // 2. Representative Block 9 retained state: governance/invitation/audit/
@@ -1442,14 +1443,26 @@ describe("migrations against real PostgreSQL", () => {
       await pool.query(
         `INSERT INTO reproduction_tests
            ("id", "issue_id", "event_id", "generated_by_user_id",
-            "generator_version", "status", "idempotency_key_hash")
+            "generator_version", "status", "idempotency_key_hash", "created_at")
          VALUES ($1, $2, $3, 'fixture-user-9', '1.0.0', 'pending',
-                 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd')`,
-        [reproductionId, issueId, eventId],
+                 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+                 '2026-01-01T00:00:00Z')`,
+        [earlierPendingReproductionId, issueId, eventId],
       );
       await pool.query(
-        `INSERT INTO reproduction_generation_outbox ("reproduction_id") VALUES ($1)`,
-        [reproductionId],
+        `INSERT INTO reproduction_tests
+           ("id", "issue_id", "event_id", "generated_by_user_id",
+            "generator_version", "status", "idempotency_key_hash", "code",
+            "created_at", "completed_at")
+         VALUES ($1, $2, $3, 'fixture-user-9', '1.0.0', 'ready',
+                 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+                 'import { test, expect } from ''@playwright/test'';',
+                 '2026-01-01T00:01:00Z', '2026-01-01T00:02:00Z')`,
+        [laterReadyReproductionId, issueId, eventId],
+      );
+      await pool.query(
+        `INSERT INTO reproduction_generation_outbox ("reproduction_id") VALUES ($1), ($2)`,
+        [earlierPendingReproductionId, laterReadyReproductionId],
       );
     });
 
@@ -1499,16 +1512,45 @@ describe("migrations against real PostgreSQL", () => {
       ).toBe("mapped");
 
       const reproduction = await pool.query(
-        `SELECT status FROM reproduction_tests WHERE id = $1`,
-        [reproductionId],
+        `SELECT id, status, code FROM reproduction_tests
+         WHERE generated_by_user_id = 'fixture-user-9'
+           AND event_id = $1
+           AND generator_version = '1.0.0'
+           AND idempotency_key_hash =
+             'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'`,
+        [eventId],
       );
-      expect(reproduction.rows[0]?.status).toBe("pending");
+      expect(reproduction.rows).toEqual([
+        {
+          id: laterReadyReproductionId,
+          status: "ready",
+          code: "import { test, expect } from '@playwright/test';",
+        },
+      ]);
       const reproductionOutbox = await pool.query(
         `SELECT reproduction_id FROM reproduction_generation_outbox
-         WHERE reproduction_id = $1`,
-        [reproductionId],
+         WHERE reproduction_id IN ($1, $2)`,
+        [earlierPendingReproductionId, laterReadyReproductionId],
       );
-      expect(reproductionOutbox.rows).toHaveLength(1);
+      expect(reproductionOutbox.rows).toEqual([
+        { reproduction_id: laterReadyReproductionId },
+      ]);
+      const reproductionUnique = await pool.query(
+        `SELECT conname FROM pg_constraint
+         WHERE conname = 'reproduction_tests_idempotency_unique'`,
+      );
+      expect(reproductionUnique.rows).toHaveLength(1);
+
+      await expect(
+        pool.query(
+          `INSERT INTO reproduction_tests
+             ("issue_id", "event_id", "generated_by_user_id",
+              "generator_version", "status", "idempotency_key_hash")
+           VALUES ($1, $2, 'fixture-user-9', '2.0.0', 'pending',
+                   'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd')`,
+          [issueId, eventId],
+        ),
+      ).resolves.toBeDefined();
 
       await pool.query(
         `INSERT INTO ai_analyses

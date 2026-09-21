@@ -78,8 +78,6 @@ jobs:
       # no S3, no external map server). Suites that need storage
       # inject their own temp dirs; this keeps any shared-contract default
       # (LocalArtifactStorage.fromEnv) off the runner home directory.
-      REPLAYBUG_ARTIFACT_DIR: ${{ runner.temp }}/replaybug-artifacts-test
-      REPLAYBUG_ARTIFACT_STAGING_DIR: ${{ runner.temp }}/replaybug-artifacts-staging-test
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -90,6 +88,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: configure artifact temp directories
+        shell: bash
+        run: |
+          echo "REPLAYBUG_ARTIFACT_DIR=$RUNNER_TEMP/replaybug-artifacts-test" >> "$GITHUB_ENV"
+          echo "REPLAYBUG_ARTIFACT_STAGING_DIR=$RUNNER_TEMP/replaybug-artifacts-staging-test" >> "$GITHUB_ENV"
       # Covers unit tests plus real-PostgreSQL integration suites:
       # migrations (packages/db), ingest (apps/api) and the worker pipeline
       # (apps/worker: pg-boss startup, outbox dispatch, event processing,
@@ -125,8 +128,6 @@ jobs:
     env:
       REPLAYBUG_DATABASE_URL: postgres://replaybug:replaybug@localhost:5544/replaybug
       # Hermetic per-run artifact directories mirror the tests job.
-      REPLAYBUG_ARTIFACT_DIR: ${{ runner.temp }}/replaybug-artifacts-isolation
-      REPLAYBUG_ARTIFACT_STAGING_DIR: ${{ runner.temp }}/replaybug-artifacts-staging-isolation
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -137,6 +138,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: configure artifact temp directories
+        shell: bash
+        run: |
+          echo "REPLAYBUG_ARTIFACT_DIR=$RUNNER_TEMP/replaybug-artifacts-isolation" >> "$GITHUB_ENV"
+          echo "REPLAYBUG_ARTIFACT_STAGING_DIR=$RUNNER_TEMP/replaybug-artifacts-staging-isolation" >> "$GITHUB_ENV"
       - run: pnpm test:isolation
 
   openapi-drift:
@@ -201,7 +207,6 @@ jobs:
       # directory). The minified source-map full-flow specs
       # (releases-sourcemaps, sourcemaps-full-flow) spawn their worker
       # against the same root.
-      REPLAYBUG_ARTIFACT_DIR: ${{ runner.temp }}/replaybug-artifacts-e2e
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -212,6 +217,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: configure artifact temp directory
+        shell: bash
+        run: |
+          echo "REPLAYBUG_ARTIFACT_DIR=$RUNNER_TEMP/replaybug-artifacts-e2e" >> "$GITHUB_ENV"
       - run: pnpm db:migrate
       - run: pnpm build
       - run: pnpm --filter @replaybug/web exec playwright install --with-deps chromium

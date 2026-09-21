@@ -27,7 +27,7 @@
     "verify:generated-test": "tsx scripts/verify-generated-test.ts",
     "test:sdk": "pnpm --filter @replaybug/sdk test",
     "test:e2e": "pnpm --filter @replaybug/web test:e2e && pnpm --filter @replaybug/demo test:e2e",
-    "test:browser-compat": "pnpm --filter @replaybug/demo exec playwright test --config=playwright.compat.config.ts",
+    "test:browser-compat": "pnpm turbo run build --filter=@replaybug/sdk && pnpm --filter @replaybug/demo exec playwright test --config=playwright.compat.config.ts",
     "test:isolation": "tsx scripts/test-parallel-integration-isolation.ts"
   },
   "devDependencies": {

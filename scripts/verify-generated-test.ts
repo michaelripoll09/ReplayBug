@@ -69,7 +69,7 @@ const ALLOWED_HOSTS: ReadonlySet<string> = new Set([
   "::1",
 ]);
 
-interface CliArgs {
+export interface CliArgs {
   codeFile: string | null;
   target: string | null;
   timeoutMs: number;
@@ -90,7 +90,11 @@ Options:
 `);
 }
 
-function parseArgs(argv: string[]): CliArgs {
+export function normalizeCliArgs(argv: string[]): string[] {
+  return argv[0] === "--" ? argv.slice(1) : argv;
+}
+
+export function parseArgs(argv: string[]): CliArgs {
   const out: CliArgs = {
     codeFile: null,
     target: null,
@@ -299,7 +303,7 @@ async function runPlaywright(
 async function main(): Promise<number> {
   let args: CliArgs;
   try {
-    args = parseArgs(process.argv.slice(2));
+    args = parseArgs(normalizeCliArgs(process.argv.slice(2)));
   } catch (error) {
     console.error(
       `verify-generated-test: ${error instanceof Error ? error.message : String(error)}`,
@@ -405,14 +409,19 @@ async function main(): Promise<number> {
   return 0;
 }
 
-void main().then(
-  (exitCode) => {
-    process.exit(exitCode);
-  },
-  (error: unknown) => {
-    console.error(
-      `verify-generated-test: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(1);
-  },
-);
+if (
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  void main().then(
+    (exitCode) => {
+      process.exit(exitCode);
+    },
+    (error: unknown) => {
+      console.error(
+        `verify-generated-test: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      process.exit(1);
+    },
+  );
+}

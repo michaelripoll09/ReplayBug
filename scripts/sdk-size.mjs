@@ -53,9 +53,12 @@ async function main() {
     rmSync(DIST_SIZE_DIR, { recursive: true });
   }
 
+  // Build workspace dependencies required for declaration generation.
+  run("pnpm --filter @replaybug/contracts build", SDK_DIR);
+
   // Build ESM only for size measurement
   run(
-    "npx tsup src/index.ts --format esm --dts --sourcemap --clean --out-dir dist-size",
+    "pnpm exec tsup src/index.ts --format esm --dts --sourcemap --clean --out-dir dist-size",
   );
 
   const jsPath = join(DIST_SIZE_DIR, "index.js");
@@ -70,7 +73,7 @@ async function main() {
 
   // Minified size (using esbuild)
   run(
-    "npx esbuild dist-size/index.js --minify --format=esm --outfile=dist-size/index.min.js",
+    "pnpm exec esbuild dist-size/index.js --minify --format=esm --outfile=dist-size/index.min.js",
   );
   const minPath = join(DIST_SIZE_DIR, "index.min.js");
   const minBytes = getFileSize(minPath);

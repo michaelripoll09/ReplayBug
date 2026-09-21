@@ -1,6 +1,6 @@
 # ADR 0006 — SSE invalidation instead of WebSockets
 
-Status: accepted (Block 6; master spec §47 topic 5)
+Status: accepted (Block 6)
 
 ## Problem
 

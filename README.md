@@ -183,10 +183,10 @@ pnpm verify:generated-test
 pnpm benchmark:ingest
 ```
 
-The [acceptance map](docs/acceptance.md) connects the master Definition of Done to
-commands, routes, and documentation. [Performance notes](docs/performance.md) describe
+The [verification map](docs/acceptance.md) connects commands, routes, and
+documentation to the covered behavior. [Performance notes](docs/performance.md) describe
 the self-contained local benchmark and record only actual measured output. The configured
-[GitHub Actions workflow](.github/workflows/ci.yml) defines format, lint, typecheck,
+[GitHub Actions workflow](.github/workflows/ci.yml) covers format, lint, typecheck,
 test, build, OpenAPI, E2E, browser-compatibility, size, and dependency-audit gates.
 
 ## Architecture and operations
@@ -196,7 +196,7 @@ test, build, OpenAPI, E2E, browser-compatibility, size, and dependency-audit gat
 - [Fingerprinting](docs/architecture/fingerprinting.md) · [worker/outbox](docs/architecture/worker.md) · [source maps](docs/architecture/source-maps.md)
 - [Reproduction generator](docs/architecture/reproduction-generator.md) · [tenancy/governance](docs/architecture/tenancy.md) · [optional AI](docs/architecture/ai-analysis.md)
 - [CLI](docs/cli.md) · [self-hosting](docs/self-hosting.md) · [full Docker stack](docker/README.md)
-- [ADRs](docs/adr/README.md) · [master specification]() · [acceptance map](docs/acceptance.md) · [performance](docs/performance.md)
+- [ADRs](docs/adr/README.md) · [verification map](docs/acceptance.md) · [performance](docs/performance.md)
 
 ## Trade-offs and non-goals
 
@@ -208,10 +208,9 @@ the storage seam leaves room for a future backend without making one required.
 
 ## Project status
 
-The current `feat/final-portfolio` branch contains the portfolio/demo work locally.
-The repository has a GitHub Actions workflow, but remote Actions have **not** run for
-this unpushed branch; that is the only remote proof still pending. See
-[docs/acceptance.md](docs/acceptance.md) for the explicit proof map.
+The repository includes the portfolio/demo work and a configured GitHub Actions
+workflow. See the [verification map](docs/acceptance.md) for local checks, workflow
+coverage, routes, and documentation evidence.
 
 ## License
 

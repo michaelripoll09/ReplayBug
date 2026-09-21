@@ -7,7 +7,7 @@
 ## Search strategy (T05)
 
 Issue search uses PostgreSQL only. No Elasticsearch, Meilisearch or other
-service is introduced (master spec §27).
+service is introduced.
 
 - **Indexed content**: `issues.title`, `issues.normalized_message`
   (GIN trigram indexes `issues_title_trgm_idx` /
@@ -75,7 +75,7 @@ load):
 - **Top 5** issues by in-range occurrences; **distributions** by
   environment and release (`NULL` release → `"unknown"`).
 - **Buckets**: UTC-aligned, fixed counts — 24 hourly for `24h`, 7/30 daily
-  otherwise (≤48h hourly else daily, master spec §51). The trailing partial
+  otherwise (≤48h hourly else daily). The trailing partial
   bucket folds into the last fixed bucket so bucket sums always reconcile
   with the scalar totals.
 - **Gotcha**: `node-pg` returns `date_trunc` `timestamp` as string, not

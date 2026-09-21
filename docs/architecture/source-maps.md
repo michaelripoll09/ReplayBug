@@ -5,8 +5,7 @@ secret-token CLI uploads build artifacts per release, the worker
 symbolicates event frames against those artifacts **before**
 fingerprinting, and the dashboard shows mapped stacks with a raw fallback.
 Telemetry, grouping, and realtime keep working when maps are missing or
-storage is down — degradation is specified, not accidental (master spec
-§54).
+storage is down — degradation is specified, not accidental.
 
 Explicitly out of scope: fetching maps from anywhere except the upload
 pipeline (no external artifact download, no server-side source fetching),

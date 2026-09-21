@@ -1,6 +1,6 @@
 # ADR 0003 — Local-first artifact storage abstraction
 
-Status: accepted (Block 7; master spec §47 topic 6)
+Status: accepted (Block 7)
 
 > **Superseded in part — 2025-07-16 (Block 9).** The original worker-read-only
 > access split is superseded for retention and deletion cleanup. The
@@ -13,11 +13,11 @@ Status: accepted (Block 7; master spec §47 topic 6)
 Release artifacts (source maps, minified assets) need durable blob
 storage that a self-hosted single-node deployment can run with zero paid
 services: PostgreSQL plus the local filesystem is the whole stateful
-infrastructure (master spec §55). Byte columns in Postgres would bloat
+infrastructure. Byte columns in Postgres would bloat
 the database and its backups; an object store (S3 or equivalent) would
 add a vendor, credentials, and a network dependency to every symbolication.
 The design must also survive the store being down without taking
-telemetry down with it (master spec §54).
+telemetry down with it.
 
 ## Options considered
 

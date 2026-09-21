@@ -39,6 +39,18 @@ data/
 # Agent/tool local state (auto-generated, never commit)
 .atl/
 
+# Local planning and implementation records (keep locally, never publish)
+
+
+
+
+
+
+
+
+
+
+
 # OS / editor
 .DS_Store
 Thumbs.db

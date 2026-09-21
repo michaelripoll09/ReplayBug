@@ -20,8 +20,8 @@ fingerprint = SHA-256(projectId + ":" + signature), hex lowercase, 64 chars
   a credential, and it must stay reproducible across self-hosted deployments.
 - `issues.fingerprint_signature` stores the canonical signature next to the
   hash so suspicious collisions can be diagnosed. The hash remains the only
-  grouping key (master spec 14.5).
-- `release` is **never** part of the signature (master spec 14.1): the same
+  grouping key.
+- `release` is **never** part of the signature: the same
   defect is tracked across deployments. Session id, user hash, timestamp,
   event id and environment are excluded as well.
 

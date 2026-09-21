@@ -42,7 +42,7 @@ local filesystem is the current stateful infrastructure.
 | [cli.md](cli.md)                                                                 | CLI release and source-map operations                                         |
 | [self-hosting.md](self-hosting.md)                                               | Local artifact-storage operations and deletion troubleshooting                |
 | [adr/](adr/README.md)                                                            | Architecture decision records                                                 |
-| [acceptance.md](acceptance.md)                                                   | Definition-of-Done proof map                                                  |
+| [acceptance.md](acceptance.md)                                                   | Public verification map                                                       |
 | [performance.md](performance.md)                                                 | Measured-performance record structure and benchmark scope                     |
 
 ## Issue export

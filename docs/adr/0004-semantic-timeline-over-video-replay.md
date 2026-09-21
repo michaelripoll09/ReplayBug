@@ -1,6 +1,6 @@
 # ADR 0004 — Semantic timeline instead of DOM/video replay
 
-Status: accepted (Block 8; master spec §47 topic 1)
+Status: accepted (Block 8)
 
 ## Problem
 

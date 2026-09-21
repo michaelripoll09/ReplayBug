@@ -41,8 +41,7 @@ worker / API mutation ──(in-tx pg_notify)──▶ PostgreSQL
 - **Ready gate**: the `ready` frame is sent after LISTEN is established,
   so every mutation after `ready` is observable. If the database is
   unreachable the stream still opens with `status: "degraded"` — the
-  dashboard keeps working through normal refetch (degraded operation,
-  master spec §54).
+  dashboard keeps working through normal refetch (degraded operation).
 
 ## Authorization
 

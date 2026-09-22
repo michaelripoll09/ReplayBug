@@ -1,19 +1,14 @@
 import { expect, test } from "@playwright/test";
-import {
-  e2eFixture,
-  persistedTelemetryJson,
-  pollUntil,
-  withPool,
-} from "./helpers";
+import { e2eFixture, pollUntil, withPool } from "./helpers";
 
 const fixture = e2eFixture();
 
-const SAFE_FIXTURE = "SAFE_REPLAYBUG_VALUE";
-const PASSWORD_FIXTURE = "ReplayBugPassword123!";
+const SAFE_FIXTURE = "SAFE_REPLAYBUG_E2E_VALUE_92841";
+const PASSWORD_FIXTURE = "PRIVATE_PASSWORD_E2E_92841";
 const CARD_FIXTURE = "4111111111111111";
-const TOKEN_FIXTURE = "rb_demo_token_secret_value";
-const MASKED_FIXTURE = "MASKED_REPLAYBUG_VALUE";
-const IGNORED_FIXTURE = "IGNORED_REPLAYBUG_VALUE";
+const TOKEN_FIXTURE = "PRIVATE_TOKEN_E2E_92841";
+const MASKED_FIXTURE = "PRIVATE_MASKED_E2E_92841";
+const IGNORED_FIXTURE = "PRIVATE_IGNORED_E2E_92841";
 const RAW_USER_ID = "synthetic-user-123";
 const JWT_FIXTURE =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
@@ -54,18 +49,34 @@ test.describe("Block 4 privacy E2E", () => {
     await pollUntil(async () => {
       return withPool(async (pool) => {
         const res = await pool.query(
-          `SELECT COUNT(*)::int AS count FROM events
-           WHERE project_id = $1 AND received_at >= $2
-             AND row_to_json(events)::text LIKE $3`,
+          `SELECT COUNT(*)::int AS count FROM events e
+           INNER JOIN telemetry_sessions s ON s.id = e.telemetry_session_id
+           WHERE e.project_id = $1 AND e.received_at >= $2
+             AND s.started_at >= $2
+             AND row_to_json(e)::text LIKE $3`,
           [fixture.projectId, testStart, `%${SAFE_FIXTURE}%`],
         );
         return res.rows[0].count > 0 ? true : null;
       });
     });
 
-    // Zero occurrences for every sensitive fixture and the raw user ID
-    // across ALL persisted telemetry for the project.
-    const persisted = await persistedTelemetryJson(fixture.projectId);
+    // Scope the leak scan to telemetry from this test's sessions. Fixture
+    // data from earlier tests must not influence this privacy assertion.
+    const persisted = await withPool(async (pool) => {
+      const sessions = await pool.query(
+        `SELECT row_to_json(s) AS row FROM telemetry_sessions s
+         WHERE s.project_id = $1 AND s.started_at >= $2`,
+        [fixture.projectId, testStart],
+      );
+      const events = await pool.query(
+        `SELECT row_to_json(e) AS row FROM events e
+         INNER JOIN telemetry_sessions s ON s.id = e.telemetry_session_id
+         WHERE e.project_id = $1 AND e.received_at >= $2
+           AND s.started_at >= $2`,
+        [fixture.projectId, testStart],
+      );
+      return JSON.stringify([...sessions.rows, ...events.rows]);
+    });
     for (const secret of [
       PASSWORD_FIXTURE,
       CARD_FIXTURE,
@@ -83,21 +94,25 @@ test.describe("Block 4 privacy E2E", () => {
     // input events whose safe-selector match flag is true.
     const wrongLocations = await withPool((pool) =>
       pool.query(
-        `SELECT COUNT(*)::int AS count FROM events
-         WHERE project_id = $1
-           AND row_to_json(events)::text LIKE $2
-           AND (event_type <> 'input'
-                OR payload_json->>'is_safe_selector_match' <> 'true')`,
-        [fixture.projectId, `%${SAFE_FIXTURE}%`],
+        `SELECT COUNT(*)::int AS count FROM events e
+         INNER JOIN telemetry_sessions s ON s.id = e.telemetry_session_id
+         WHERE e.project_id = $1 AND e.received_at >= $2
+           AND s.started_at >= $2
+           AND row_to_json(e)::text LIKE $3
+           AND (e.event_type <> 'input'
+                OR e.payload_json->>'is_safe_selector_match' <> 'true')`,
+        [fixture.projectId, testStart, `%${SAFE_FIXTURE}%`],
       ),
     );
     expect(wrongLocations.rows[0].count).toBe(0);
 
     const safeEvents = await withPool((pool) =>
       pool.query(
-        `SELECT payload_json->>'value' AS value FROM events
-         WHERE project_id = $1 AND received_at >= $2 AND event_type = 'input'
-           AND payload_json->>'is_safe_selector_match' = 'true'`,
+        `SELECT e.payload_json->>'value' AS value FROM events e
+         INNER JOIN telemetry_sessions s ON s.id = e.telemetry_session_id
+         WHERE e.project_id = $1 AND e.received_at >= $2
+           AND s.started_at >= $2 AND e.event_type = 'input'
+           AND e.payload_json->>'is_safe_selector_match' = 'true'`,
         [fixture.projectId, testStart],
       ),
     );

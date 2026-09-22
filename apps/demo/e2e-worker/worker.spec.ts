@@ -119,17 +119,21 @@ interface IssueRow {
   title: string;
   status: string;
   type: string;
+  severity: string;
   fingerprint: string;
   fingerprint_signature: string;
   occurrence_count: number;
   affected_session_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
 }
 
 async function fetchDemoTypeErrorIssue(): Promise<IssueRow | null> {
   return withPool(async (pool) => {
     const result = await pool.query(
-      `SELECT id, title, status, type, fingerprint, fingerprint_signature,
-              occurrence_count, affected_session_count
+      `SELECT id, title, status, type, severity, fingerprint,
+              fingerprint_signature, occurrence_count, affected_session_count,
+              first_seen_at, last_seen_at
        FROM issues
        WHERE project_id = $1 AND title LIKE '%Cannot read properties of null%'
        ORDER BY created_at
@@ -138,6 +142,75 @@ async function fetchDemoTypeErrorIssue(): Promise<IssueRow | null> {
     );
     const row = result.rows[0] as IssueRow | undefined;
     return row ?? null;
+  });
+}
+
+async function clearFixtureProjectTelemetry(): Promise<void> {
+  await withPool(async (pool) => {
+    // Issue-owned records cascade from issues; event/outbox records cascade
+    // from telemetry sessions. The ingest key and project configuration stay.
+    await pool.query(`DELETE FROM issues WHERE project_id = $1`, [
+      fixture.projectId,
+    ]);
+    await pool.query(`DELETE FROM telemetry_sessions WHERE project_id = $1`, [
+      fixture.projectId,
+    ]);
+  });
+}
+
+async function fetchNavigationClickIssue(): Promise<IssueRow | null> {
+  return withPool(async (pool) => {
+    const result = await pool.query(
+      `SELECT id, title, status, type, severity, fingerprint,
+              fingerprint_signature, occurrence_count, affected_session_count,
+              first_seen_at, last_seen_at
+       FROM issues
+       WHERE project_id = $1 AND title LIKE '%after navigation and click%'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [fixture.projectId],
+    );
+    const row = result.rows[0] as IssueRow | undefined;
+    return row ?? null;
+  });
+}
+
+interface GroupedEventRow {
+  id: string;
+  telemetry_session_id: string;
+  issue_id: string | null;
+  fingerprint: string | null;
+  fingerprint_signature: string | null;
+  processing_state: string;
+}
+
+async function fetchNavigationClickEvents(
+  since: Date,
+): Promise<GroupedEventRow[]> {
+  return withPool(async (pool) => {
+    const result = await pool.query(
+      `SELECT e.id, e.telemetry_session_id, e.issue_id, e.fingerprint,
+              e.processing_state, i.fingerprint_signature
+       FROM events e
+       LEFT JOIN issues i ON i.id = e.issue_id
+       WHERE e.project_id = $1 AND e.received_at >= $2
+         AND e.event_type = 'exception'
+       ORDER BY e.received_at`,
+      [fixture.projectId, since],
+    );
+    return result.rows as GroupedEventRow[];
+  });
+}
+
+async function fetchSessionEventTypes(sessionId: string): Promise<string[]> {
+  return withPool(async (pool) => {
+    const result = await pool.query(
+      `SELECT event_type FROM events
+       WHERE project_id = $1 AND telemetry_session_id = $2
+       ORDER BY sequence_number, occurred_at, id`,
+      [fixture.projectId, sessionId],
+    );
+    return result.rows.map((row: { event_type: string }) => row.event_type);
   });
 }
 
@@ -198,54 +271,111 @@ test.describe("Block 5 worker E2E (browser → ingest → outbox → pg-boss →
     expect(duplicates).toBe(1);
   });
 
-  test("groups the same deterministic demo error across sessions without duplicates", async ({
+  test("groups repeated browser failures into one deterministic issue", async ({
     browser,
   }) => {
-    const baseline = await fetchDemoTypeErrorIssue();
-    expect(baseline).not.toBeNull();
-    if (baseline === null) throw new Error("unreachable");
+    // This test owns both its data and worker lifecycle, so it does not depend
+    // on the browser session or worker state left by the preceding test.
+    await stopWorker();
+    await clearFixtureProjectTelemetry();
+    await startWorker();
+    const testStart = new Date();
 
-    // Two fresh browser contexts: two new SDK sessions, same defect.
-    for (let index = 0; index < 2; index++) {
+    // Three independent browser contexts create three SDK sessions. Each runs
+    // the real navigation → click → uncaught exception scenario exactly once.
+    for (let index = 0; index < 3; index += 1) {
       const context = await browser.newContext();
-      const page = await context.newPage();
-      await page.goto("/");
-      await expect(page.locator("p:has-text('Telemetry:')")).toContainText(
-        "Enabled",
-      );
-      await page
-        .getByRole("button", { name: /1\. JavaScript Exception/ })
-        .click();
-      await expect(page.getByText(/Exception captured:/)).toBeVisible();
-      await context.close();
+      try {
+        const page = await context.newPage();
+        await page.goto("/");
+        await expect(page.locator("p:has-text('Telemetry:')")).toContainText(
+          "Enabled",
+        );
+        await page.evaluate((index) => {
+          window.location.hash = `e2e-grouping-${index}`;
+        }, index);
+        await page.getByTestId("demo-nav-click-error").click();
+        await expect(
+          page.getByText("Navigation → Click → Error captured"),
+        ).toBeVisible();
+      } finally {
+        await context.close();
+      }
     }
 
-    const updated = await pollUntil(
+    const issue = await pollUntil(
       async () => {
-        const issue = await fetchDemoTypeErrorIssue();
-        return issue !== null &&
-          issue.occurrence_count >= baseline.occurrence_count + 2
-          ? issue
+        const current = await fetchNavigationClickIssue();
+        return current?.occurrence_count === 3 &&
+          current.affected_session_count === 3
+          ? current
           : null;
       },
       90_000,
       250,
     );
 
-    expect(updated.id).toBe(baseline.id);
-    expect(updated.occurrence_count).toBe(baseline.occurrence_count + 2);
-    expect(updated.affected_session_count).toBe(
-      baseline.affected_session_count + 2,
+    expect(issue.status).toBe("open");
+    expect(issue.type).toBe("exception");
+    expect(issue.severity).toBe("error");
+    expect(issue.occurrence_count).toBe(3);
+    expect(issue.affected_session_count).toBe(3);
+    expect(issue.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(issue.fingerprint_signature).toContain(
+      "DEMO: Error after navigation and click",
+    );
+    expect(new Date(issue.first_seen_at).getTime()).toBeLessThanOrEqual(
+      new Date(issue.last_seen_at).getTime(),
     );
 
-    const issueCount = await withPool(async (pool) => {
+    const events = await pollUntil(
+      async () => {
+        const current = await fetchNavigationClickEvents(testStart);
+        return current.length === 3 &&
+          current.every(
+            (event) =>
+              event.processing_state === "processed" &&
+              event.issue_id === issue.id &&
+              event.fingerprint === issue.fingerprint &&
+              event.fingerprint_signature === issue.fingerprint_signature,
+          )
+          ? current
+          : null;
+      },
+      90_000,
+      250,
+    );
+
+    expect(events).toHaveLength(3);
+    expect(new Set(events.map((event) => event.issue_id)).size).toBe(1);
+    expect(new Set(events.map((event) => event.fingerprint)).size).toBe(1);
+    expect(
+      new Set(events.map((event) => event.fingerprint_signature)).size,
+    ).toBe(1);
+
+    const sessionIds = new Set(
+      events.map((event) => event.telemetry_session_id),
+    );
+    expect(sessionIds.size).toBe(3);
+    const timeline = await fetchSessionEventTypes([...sessionIds][0] as string);
+    expect(timeline).toEqual(
+      expect.arrayContaining(["navigation", "click", "exception"]),
+    );
+    expect(timeline.indexOf("navigation")).toBeLessThan(
+      timeline.indexOf("click"),
+    );
+    expect(timeline.indexOf("click")).toBeLessThan(
+      timeline.indexOf("exception"),
+    );
+
+    const duplicateCount = await withPool(async (pool) => {
       const result = await pool.query(
         `SELECT COUNT(*)::int AS count FROM issues
          WHERE project_id = $1 AND fingerprint = $2`,
-        [fixture.projectId, baseline.fingerprint],
+        [fixture.projectId, issue.fingerprint],
       );
       return (result.rows[0] as { count: number }).count;
     });
-    expect(issueCount).toBe(1);
+    expect(duplicateCount).toBe(1);
   });
 });

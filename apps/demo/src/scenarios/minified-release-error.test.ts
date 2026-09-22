@@ -8,16 +8,16 @@ import {
 } from "./minified-release-error.js";
 
 describe("minified-release-error scenario (RS-11)", () => {
-  it("throws a genuine TypeError reading `lines` of a null payload", () => {
+  it("throws the deterministic release error after the null guard", () => {
     try {
       triggerMinifiedReleaseError();
       expect.unreachable("scenario must throw");
     } catch (error) {
-      expect(error).toBeInstanceOf(TypeError);
-      expect((error as Error).message).toContain(
-        "Cannot read properties of null",
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(TypeError);
+      expect((error as Error).message).toMatch(
+        /^DEMO: Minified release error is unreachable/,
       );
-      expect((error as Error).message).toContain("lines");
     }
   });
 

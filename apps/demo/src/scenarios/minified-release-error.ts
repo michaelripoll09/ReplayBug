@@ -34,16 +34,16 @@ interface ReleaseOrder {
 }
 
 /**
- * Throws a genuine runtime TypeError from this file.
+ * Throws the deterministic release error from this file.
  *
  * Simulates a release API response that violates its contract and is null
- * at runtime. Reading `lines` of null throws; the throwing frame is this
- * module, which is the original-source target the symbolication flow must
- * recover from the minified production bundle.
+ * at runtime. The null guard keeps the intended error as the throwing frame
+ * in this module, which is the original-source target the symbolication flow
+ * must recover from the minified production bundle.
  */
 export function triggerMinifiedReleaseError(): never {
-  const order = JSON.parse("null") as ReleaseOrder;
-  const lineCount = order.lines.length;
+  const order = JSON.parse("null") as ReleaseOrder | null;
+  const lineCount = order === null ? 0 : order.lines.length;
   throw new Error(
     `DEMO: Minified release error is unreachable (lines=${lineCount})`,
   );

@@ -24,9 +24,9 @@ const fixture = e2eFixture();
 // unaffected; the nested run still validates generated tests end to end.
 test.use({ trace: "off" });
 
-const SAFE_VALUE = "SAFE_REPLAYBUG_VALUE";
-const PASSWORD_SECRET = "ReplayBugPassword123!";
-const MASKED_SECRET = "MASKED_REPLAYBUG_VALUE";
+const SAFE_VALUE = "SAFE_REPLAYBUG_E2E_VALUE_92841";
+const PASSWORD_SECRET = "PRIVATE_PASSWORD_E2E_92841";
+const MASKED_SECRET = "PRIVATE_MASKED_E2E_92841";
 const PRIVACY_EXCEPTION = "DEMO: Privacy form submitted";
 const UNCAUGHT_EXCEPTION = "DEMO: Uncaught error after navigation and click";
 

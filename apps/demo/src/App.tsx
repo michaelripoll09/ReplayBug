@@ -8,7 +8,6 @@ import {
 } from "@replaybug/sdk";
 import {
   MINIFIED_RELEASE_BUTTON_LABEL,
-  MINIFIED_RELEASE_SCENARIO_ID,
   MINIFIED_RELEASE_TEST_ID,
   MINIFIED_RELEASE_VERSION,
   triggerMinifiedReleaseError,
@@ -215,14 +214,10 @@ export function App(): React.JSX.Element {
   };
 
   const triggerMinifiedReleaseErrorScenario = () => {
-    try {
+    setLastError("Minified release error armed…");
+    setTimeout(() => {
       triggerMinifiedReleaseError();
-    } catch (error) {
-      captureException(error as Error, {
-        scenario: MINIFIED_RELEASE_SCENARIO_ID,
-      });
-      setLastError(`Exception captured: ${(error as Error).message}`);
-    }
+    }, 100);
   };
 
   const triggerUncaughtError = () => {
@@ -407,7 +402,7 @@ export function App(): React.JSX.Element {
               id="repro-safe-input"
               name="repro-safe-input"
               data-testid="repro-safe-input"
-              placeholder="SAFE_REPLAYBUG_VALUE"
+              placeholder="SAFE_REPLAYBUG_E2E_VALUE_92841"
               data-replaybug-safe="true"
               style={{
                 width: "100%",
@@ -430,7 +425,7 @@ export function App(): React.JSX.Element {
             <input
               ref={passwordInputRef}
               type="password"
-              placeholder="ReplayBugPassword123!"
+              placeholder="PRIVATE_PASSWORD_E2E_92841"
               style={{
                 width: "100%",
                 padding: "0.5rem",
@@ -474,7 +469,7 @@ export function App(): React.JSX.Element {
             <input
               ref={tokenInputRef}
               type="text"
-              placeholder="rb_demo_token_secret_value"
+              placeholder="PRIVATE_TOKEN_E2E_92841"
               style={{
                 width: "100%",
                 padding: "0.5rem",
@@ -499,7 +494,7 @@ export function App(): React.JSX.Element {
               id="repro-masked-input"
               name="repro-masked-input"
               data-testid="repro-masked-input"
-              placeholder="MASKED_REPLAYBUG_VALUE"
+              placeholder="PRIVATE_MASKED_E2E_92841"
               data-replaybug-mask="true"
               style={{
                 width: "100%",
@@ -522,7 +517,7 @@ export function App(): React.JSX.Element {
             <input
               ref={ignoredInputRef}
               type="text"
-              placeholder="IGNORED_REPLAYBUG_VALUE"
+              placeholder="PRIVATE_IGNORED_E2E_92841"
               data-replaybug-ignore="true"
               style={{
                 width: "100%",

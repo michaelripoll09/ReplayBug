@@ -813,7 +813,9 @@ test.beforeAll(async ({ browser }) => {
   );
   // A secret fixture typed into the (auto-redacted) password field: it must
   // never reach the outbound AI evidence.
-  await demoPage.getByPlaceholder("ReplayBugPassword123!").fill(SECRET_FIXTURE);
+  await demoPage
+    .getByPlaceholder("PRIVATE_PASSWORD_E2E_92841")
+    .fill(SECRET_FIXTURE);
   // Two navigation-click captures with identical stacks group into one issue
   // with two occurrences, so the occurrence selector is exercisable.
   await demoPage.getByTestId("demo-nav-click-error").click();
@@ -1077,6 +1079,12 @@ test("E2E-AI-1 happy path: request → pending → SSE ready, privacy, history, 
       intervals: [1_000],
     })
     .toBe(2);
+  // The API commits the second analysis row before the worker reaches the
+  // provider. Wait for the observable provider request instead of racing that
+  // asynchronous boundary with an immediate counter assertion.
+  await pollUntil(async () =>
+    mock.requestCount === 1 ? mock.requestCount : null,
+  );
   expect(mock.requestCount).toBe(1);
   const firstAfterSecond = await fetchAnalysisDetail(readyAnalysisId);
   expect(firstAfterSecond).toEqual(firstReadySnapshot);

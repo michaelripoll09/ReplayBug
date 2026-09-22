@@ -29,6 +29,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { Pool } from "pg";
+import { validateGeneratedSyntax } from "../../../packages/reproducer/src/syntax.js";
 import { uniqueEmail, E2E_PASSWORD } from "./helpers";
 
 /**
@@ -290,6 +291,36 @@ async function addOrigin(
   expect(res.status()).toBe(201);
 }
 
+interface EnvironmentItem {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
+
+async function configureEnvironmentBaseUrl(
+  req: APIRequestContext,
+  projectId: string,
+): Promise<void> {
+  const listRes = await req.get(
+    `${API}/api/v1/projects/${projectId}/environments`,
+  );
+  expect(listRes.ok()).toBe(true);
+  const environments = (await listRes.json()) as EnvironmentItem[];
+  const environment =
+    environments.find((item) => item.isDefault) ??
+    environments.find((item) => item.name === "production") ??
+    environments[0];
+  if (environment === undefined) {
+    throw new Error("project has no environment to configure");
+  }
+
+  const patchRes = await req.patch(
+    `${API}/api/v1/environments/${environment.id}`,
+    { data: { baseUrl: DEMO_ORIGIN } },
+  );
+  expect(patchRes.ok()).toBe(true);
+}
+
 async function createSecretToken(
   req: APIRequestContext,
   projectId: string,
@@ -372,6 +403,44 @@ function parseJsonObject(text: string): Record<string, unknown> {
     throw new Error("expected a JSON object from CLI output");
   }
   return parsed;
+}
+
+async function runGeneratedTest(code: string): Promise<CliResult> {
+  const dir = await mkdtemp(join(tmpdir(), "rs12-generated-test-"));
+  const codeFile = join(dir, "reproduction.spec.ts");
+  try {
+    await writeFile(codeFile, code, "utf8");
+    return await new Promise<CliResult>((resolvePromise, rejectPromise) => {
+      const child = spawn(
+        process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+        [
+          "verify:generated-test",
+          "--",
+          "--code-file",
+          codeFile,
+          "--target",
+          DEMO_ORIGIN,
+        ],
+        {
+          cwd: REPO_ROOT,
+          stdio: ["ignore", "pipe", "pipe"],
+          shell: process.platform === "win32",
+        },
+      );
+      let stdout = "";
+      let stderr = "";
+      child.stdout?.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString("utf8");
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf8");
+      });
+      child.on("error", rejectPromise);
+      child.on("close", (code) => resolvePromise({ code, stdout, stderr }));
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 async function buildDemoDist(dsn: string, release: string): Promise<string> {
@@ -714,6 +783,7 @@ test("E2E-RS12-1 full source-map flow: CLI upload, minified error, mapped issue 
   const projectId = await onboardProject(page, "RS12 WS", "rs12-full");
   const { dsn } = await rotateDsn(page.request, projectId);
   await addOrigin(page.request, projectId, DEMO_ORIGIN);
+  await configureEnvironmentBaseUrl(page.request, projectId);
   const created = await createSecretToken(
     page.request,
     projectId,
@@ -767,10 +837,24 @@ test("E2E-RS12-1 full source-map flow: CLI upload, minified error, mapped issue 
         "Enabled",
         { timeout: 30_000 },
       );
-      await page.getByTestId(SCENARIO_TEST_ID).click();
-      await expect(page.getByText(/Exception captured:/)).toBeVisible({
-        timeout: 30_000,
-      });
+      const expectedPageError =
+        "DEMO: Minified release error is unreachable (lines=0)";
+      let pageError: Error | null = null;
+      const onPageError = (error: Error): void => {
+        pageError ??= error;
+      };
+      page.on("pageerror", onPageError);
+      try {
+        await page.getByTestId(SCENARIO_TEST_ID).click();
+        await expect.poll(() => pageError?.message).toBe(expectedPageError);
+      } finally {
+        page.off("pageerror", onPageError);
+      }
+      await expect(page.getByText(/Minified release error armed…/)).toBeVisible(
+        {
+          timeout: 30_000,
+        },
+      );
 
       const event = await waitProcessedEvent(projectId, version);
       expect(event.issue_id).not.toBeNull();
@@ -791,6 +875,66 @@ test("E2E-RS12-1 full source-map flow: CLI upload, minified error, mapped issue 
       expect(checked.rawCol).toBeGreaterThanOrEqual(1);
       // Raw ingest payload is intact (worker enriches, never overwrites).
       expect(rawPayloadFilename(event.payload_json)).toBe(checked.rawFilename);
+
+      const reproductionCreate = await page.request.post(
+        `${API}/api/v1/events/${event.id}/reproductions`,
+        {
+          headers: {
+            "Idempotency-Key": `rs12-reproduction-${event.id}`,
+          },
+        },
+      );
+      expect(reproductionCreate.status()).toBe(202);
+      const reproductionCreateBody =
+        (await reproductionCreate.json()) as unknown;
+      if (!isRecord(reproductionCreateBody)) {
+        throw new Error("reproduction create returned a non-object body");
+      }
+      const reproductionId = strField(reproductionCreateBody, "id");
+      expect(reproductionId).not.toBe("");
+      expect(["pending", "ready"]).toContain(
+        strField(reproductionCreateBody, "status"),
+      );
+      const reproduction = await pollUntil<Record<string, unknown>>(
+        async () => {
+          const response = await page.request.get(
+            `${API}/api/v1/reproductions/${reproductionId}`,
+          );
+          if (response.status() !== 200) {
+            return null;
+          }
+          const body = (await response.json()) as unknown;
+          return isRecord(body) && body["status"] === "ready" ? body : null;
+        },
+        120_000,
+        `ready reproduction ${reproductionId}`,
+      );
+      const generatedCode = strField(reproduction, "code");
+      const reproductionText = JSON.stringify(reproduction);
+      expect(strField(reproduction, "framework")).toBe("playwright");
+      expect(strField(reproduction, "language")).toBe("typescript");
+      expect(generatedCode.includes(SCENARIO_TEST_ID)).toBe(true);
+      expect(/page\.on\((?:'|")pageerror(?:'|")/.test(generatedCode)).toBe(
+        true,
+      );
+      expect(generatedCode.includes(expectedPageError)).toBe(true);
+      expect(lacksSecret(reproductionText, created.token)).toBe(true);
+      expect(/rb_sk_[0-9a-f]{8}_[A-Za-z0-9_-]{43}/.test(reproductionText)).toBe(
+        false,
+      );
+      const generatedUrls =
+        reproductionText.match(/https?:\/\/[^\s"'`\\]+/g) ?? [];
+      expect(generatedUrls.length).toBeGreaterThan(0);
+      for (const urlText of generatedUrls) {
+        const url = new URL(urlText.replace(/[),.;]+$/, ""));
+        expect(["localhost", "127.0.0.1", "::1"]).toContain(url.hostname);
+      }
+      expect(validateGeneratedSyntax(generatedCode).ok).toBe(true);
+      const generatedRun = await runGeneratedTest(generatedCode);
+      expect(generatedRun.code).toBe(0);
+      expect(
+        lacksSecret(generatedRun.stdout + generatedRun.stderr, created.token),
+      ).toBe(true);
 
       await recordEvidence("E2E-RS12-1", {
         release: version,
@@ -905,10 +1049,24 @@ test("E2E-RS12-2 two production releases with different coords share one mapped 
         "Enabled",
         { timeout: 30_000 },
       );
-      await page.getByTestId(SCENARIO_TEST_ID).click();
-      await expect(page.getByText(/Exception captured:/)).toBeVisible({
-        timeout: 30_000,
-      });
+      const expectedPageError =
+        "DEMO: Minified release error is unreachable (lines=0)";
+      let pageError: Error | null = null;
+      const onPageError = (error: Error): void => {
+        pageError ??= error;
+      };
+      page.on("pageerror", onPageError);
+      try {
+        await page.getByTestId(SCENARIO_TEST_ID).click();
+        await expect(
+          page.getByText(/Minified release error armed…/),
+        ).toBeVisible({
+          timeout: 30_000,
+        });
+        await expect.poll(() => pageError?.message).toBe(expectedPageError);
+      } finally {
+        page.off("pageerror", onPageError);
+      }
     } finally {
       await stopServer(serverA);
     }
@@ -924,10 +1082,24 @@ test("E2E-RS12-2 two production releases with different coords share one mapped 
         "Enabled",
         { timeout: 30_000 },
       );
-      await pageB.getByTestId(SCENARIO_TEST_ID).click();
-      await expect(pageB.getByText(/Exception captured:/)).toBeVisible({
-        timeout: 30_000,
-      });
+      const expectedPageError =
+        "DEMO: Minified release error is unreachable (lines=0)";
+      let pageError: Error | null = null;
+      const onPageError = (error: Error): void => {
+        pageError ??= error;
+      };
+      pageB.on("pageerror", onPageError);
+      try {
+        await pageB.getByTestId(SCENARIO_TEST_ID).click();
+        await expect(
+          pageB.getByText(/Minified release error armed…/),
+        ).toBeVisible({
+          timeout: 30_000,
+        });
+        await expect.poll(() => pageError?.message).toBe(expectedPageError);
+      } finally {
+        pageB.off("pageerror", onPageError);
+      }
     } finally {
       await stopServer(serverB);
       await context.close();
@@ -1009,9 +1181,11 @@ test("E2E-RS12-3 release without an uploaded map degrades to raw with map_not_fo
         { timeout: 30_000 },
       );
       await page.getByTestId(SCENARIO_TEST_ID).click();
-      await expect(page.getByText(/Exception captured:/)).toBeVisible({
-        timeout: 30_000,
-      });
+      await expect(page.getByText(/Minified release error armed…/)).toBeVisible(
+        {
+          timeout: 30_000,
+        },
+      );
 
       const event = await waitProcessedEvent(projectId, version);
       expect(event.issue_id).not.toBeNull();

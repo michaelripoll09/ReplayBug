@@ -12,13 +12,16 @@ workspace source and starts PostgreSQL, API, worker, web, and demo. Images do
 not copy host `node_modules`, `dist`, `.next`, or `.env` files. API and worker
 share a writable artifact volume at `/var/lib/replaybug/artifacts`.
 
-Set secrets and public URLs through your deployment environment (or a
-non-committed Compose environment file), then run migration as a separate,
-explicit operation. Do not put production secrets in image build arguments.
+Generate fresh, non-placeholder secrets with ReplayBug's already-supported
+Node 24 runtime, then set public URLs through your deployment environment (or
+a non-committed Compose environment file). Do not commit generated values or
+put them in image build arguments. The `.env.example` placeholders are for
+local `pnpm dev`; production-mode full Docker intentionally rejects them.
+Run migration as a separate, explicit operation.
 
 ```bash
-export REPLAYBUG_AUTH_SECRET="at-least-32-random-characters"
-export REPLAYBUG_USER_HMAC_SECRET="another-at-least-32-random-characters"
+export REPLAYBUG_AUTH_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')"
+export REPLAYBUG_USER_HMAC_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')"
 export REPLAYBUG_WEB_URL="https://replaybug.example.com"
 export REPLAYBUG_API_URL="https://api.replaybug.example.com"
 export NEXT_PUBLIC_REPLAYBUG_API_URL="https://api.replaybug.example.com"

@@ -10,12 +10,15 @@ setup. Use this file when a complete local or self-hosted stack is wanted.
 
 ## Start workflow
 
-Set production secrets and public URLs in the shell or a deployment-managed
-Compose environment file. Do not bake `.env` into an image or commit it.
+Generate fresh, non-placeholder production secrets with ReplayBug's
+already-supported Node 24 runtime, then set public URLs in the shell or a
+deployment-managed Compose environment file. Do not commit generated values or
+bake `.env` into an image. The `.env.example` placeholders are for local
+`pnpm dev`; production-mode full Docker intentionally rejects them.
 
 ```bash
-export REPLAYBUG_AUTH_SECRET="at-least-32-random-characters"
-export REPLAYBUG_USER_HMAC_SECRET="another-at-least-32-random-characters"
+export REPLAYBUG_AUTH_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')"
+export REPLAYBUG_USER_HMAC_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')"
 export REPLAYBUG_WEB_URL="https://replaybug.example.com"
 export REPLAYBUG_API_URL="https://api.replaybug.example.com"
 export NEXT_PUBLIC_REPLAYBUG_API_URL="https://api.replaybug.example.com"

@@ -66,10 +66,14 @@ demo project. Its API is limited to bounded `GET /api/v1/public-demo/*` response
 no authenticated route or mutation is reused. It is off unless
 `REPLAYBUG_DEMO_MODE=true`.
 
-For the full local demo, start the Docker stack, enable the flag for API, then seed
-explicitly:
+The `.env.example` secret placeholders work with local `pnpm dev`, but the
+production-mode full Docker stack intentionally rejects them. Before starting the
+full local demo, generate and export fresh non-placeholder secrets in the same
+shell. These exported values override local `.env` placeholders for Compose:
 
 ```bash
+export REPLAYBUG_AUTH_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')"
+export REPLAYBUG_USER_HMAC_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')"
 export REPLAYBUG_DEMO_MODE=true
 docker compose -f docker-compose.full.yml up -d postgres
 docker compose -f docker-compose.full.yml --profile migrate run --rm migrate

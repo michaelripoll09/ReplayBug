@@ -5,6 +5,7 @@ import type {
   BatchPayload,
   TransportResult,
 } from "./config.js";
+import { SDK_NAME, SDK_PROTOCOL_VERSION, SDK_VERSION } from "./version.js";
 
 /**
  * Event queue with batching, flush interval, and retry logic
@@ -327,9 +328,9 @@ export class EventQueue {
   private buildBatchPayload(events: ClientEvent[]): BatchPayload {
     // Session metadata would come from state - simplified here
     return {
-      protocol_version: 1,
-      sdk_name: "@replaybug/sdk",
-      sdk_version: "0.2.0",
+      protocol_version: SDK_PROTOCOL_VERSION,
+      sdk_name: SDK_NAME,
+      sdk_version: SDK_VERSION,
       session: {
         sdk_session_id: "placeholder", // Will be replaced by SDK
         browser: {

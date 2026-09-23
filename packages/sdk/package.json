@@ -1,6 +1,6 @@
 {
   "name": "@replaybug/sdk",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "ReplayBug browser SDK",
   "license": "MIT",
   "type": "module",

@@ -1,3 +1,6 @@
+// @vitest-environment node
+
+import { readFileSync } from "node:fs";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   SDK_NAME,
@@ -6,9 +9,25 @@ import {
   captureException,
   init,
 } from "./index.js";
-import { parseDsn, type ClientEvent } from "./config.js";
+import {
+  parseDsn,
+  type BatchPayload,
+  type ClientEvent,
+  type Transport,
+} from "./config.js";
+import { EventQueue } from "./queue.js";
 
 describe("@replaybug/sdk foundation metadata", () => {
+  it("keeps SDK_VERSION equal to the package version", () => {
+    const packageJson: unknown = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    );
+
+    expect(packageJson).toEqual(
+      expect.objectContaining({ version: SDK_VERSION }),
+    );
+  });
+
   it("exposes a semver SDK version", () => {
     expect(SDK_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
@@ -16,6 +35,47 @@ describe("@replaybug/sdk foundation metadata", () => {
   it("exposes the package name and protocol version", () => {
     expect(SDK_NAME).toBe("@replaybug/sdk");
     expect(SDK_PROTOCOL_VERSION).toBe(1);
+  });
+
+  it("emits batch metadata from the canonical SDK constants", async () => {
+    const batches: BatchPayload[] = [];
+    const transport: Transport = {
+      async send(batch) {
+        batches.push(batch);
+        return {
+          accepted: batch.events.length,
+          duplicate: 0,
+          rejected: 0,
+          request_id: "metadata-test",
+        };
+      },
+      async close() {},
+    };
+    const queue = new EventQueue({ transport, flushIntervalMs: 60_000 });
+    const event: ClientEvent = {
+      event_id: "metadata-event",
+      sequence_number: 1,
+      event_type: "custom",
+      timestamp: "2025-01-01T00:00:00.000Z",
+      tags: {},
+      context: {},
+      breadcrumbs: [],
+      payload: {},
+    };
+
+    try {
+      expect(queue.enqueue(event)).toBe(true);
+      await queue.flush();
+
+      expect(batches).toHaveLength(1);
+      expect(batches[0]).toMatchObject({
+        sdk_name: SDK_NAME,
+        sdk_version: SDK_VERSION,
+        protocol_version: SDK_PROTOCOL_VERSION,
+      });
+    } finally {
+      await queue.close();
+    }
   });
 
   it("exports init() function", () => {

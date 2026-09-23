@@ -29,8 +29,8 @@ services:
       NODE_ENV: production
       REPLAYBUG_DATABASE_URL: postgres://${REPLAYBUG_POSTGRES_USER:-replaybug}:${REPLAYBUG_POSTGRES_PASSWORD:-replaybug}@postgres:5432/${REPLAYBUG_POSTGRES_DB:-replaybug}
       REPLAYBUG_ENVIRONMENT: ${REPLAYBUG_ENVIRONMENT:-production}
-      REPLAYBUG_AUTH_SECRET: ${REPLAYBUG_AUTH_SECRET:-replace-this-local-development-auth-secret-before-production}
-      REPLAYBUG_USER_HMAC_SECRET: ${REPLAYBUG_USER_HMAC_SECRET:-replace-this-local-development-hmac-secret-before-production}
+      REPLAYBUG_AUTH_SECRET: ${REPLAYBUG_AUTH_SECRET:?REPLAYBUG_AUTH_SECRET is required}
+      REPLAYBUG_USER_HMAC_SECRET: ${REPLAYBUG_USER_HMAC_SECRET:?REPLAYBUG_USER_HMAC_SECRET is required}
       REPLAYBUG_WEB_URL: ${REPLAYBUG_WEB_URL:-http://localhost:3000}
       REPLAYBUG_API_URL: ${REPLAYBUG_API_URL:-http://localhost:4001}
       REPLAYBUG_DEMO_MODE: ${REPLAYBUG_DEMO_MODE:-false}

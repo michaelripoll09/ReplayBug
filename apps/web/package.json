@@ -2,7 +2,7 @@
   "name": "@replaybug/web",
   "version": "0.1.0",
   "private": true,
-  "description": "ReplayBug dashboard (auth + onboarding + shell)",
+  "description": "ReplayBug dashboard",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -47,7 +47,7 @@
     "@tailwindcss/postcss": "4.3.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
-    "@types/node": "22.20.3",
+    "@types/node": "24.13.6",
     "@types/pg": "^8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

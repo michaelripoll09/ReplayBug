@@ -94,12 +94,6 @@ export function sanitizeString(input: string): string {
     `Bearer ${REDACTED}`,
   );
 
-  // JWT tokens (three base64url parts separated by dots) - anywhere
-  result = result.replace(
-    /\b[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
-    REDACTED,
-  );
-
   // API key patterns: "api_key=...", "key=...", "apikey...", "api_key: ...", "apikey: ..."
   // Preserve the exact separator and whitespace from input
   result = result.replace(
@@ -139,19 +133,6 @@ export function sanitizeString(input: string): string {
   result = result.replace(
     /\bAuthorization\s*(:|=)\s*Basic\s+([A-Za-z0-9_=+/-]{8,})/gi,
     `Authorization: ${REDACTED}`,
-  );
-
-  // Bearer tokens outside Authorization header: "Bearer <token>" (4+ chars)
-  // Reduced from 20 to 4 to catch short tokens in context sanitizer tests
-  result = result.replace(
-    /(?<![:\w])Bearer\s+[A-Za-z0-9_-]{4,}/gi,
-    `Bearer ${REDACTED}`,
-  );
-
-  // JWT tokens (three base64url parts separated by dots) - anywhere
-  result = result.replace(
-    /\b[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
-    REDACTED,
   );
 
   return result;

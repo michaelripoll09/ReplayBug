@@ -12,6 +12,15 @@ describe("loadApiConfigFromEnv", () => {
     REPLAYBUG_USER_HMAC_SECRET: "test-hmac-secret-0123456789abcdef0123456789",
   };
 
+  function errorMessage(action: () => unknown): string {
+    try {
+      action();
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    throw new Error("Expected configuration loading to throw");
+  }
+
   it("loads defaults with only the database URL set", () => {
     const config = loadApiConfigFromEnv(baseEnv);
     expect(config.port).toBe(4001);
@@ -40,6 +49,101 @@ describe("loadApiConfigFromEnv", () => {
         REPLAYBUG_AUTH_SECRET: "short",
       }),
     ).toThrow(/REPLAYBUG_AUTH_SECRET/);
+  });
+
+  it("allows local placeholder secrets outside production", () => {
+    const config = loadApiConfigFromEnv({
+      REPLAYBUG_DATABASE_URL: "postgres://localhost:5432/replaybug",
+      REPLAYBUG_AUTH_SECRET:
+        "replace-this-local-development-auth-secret-before-production",
+      REPLAYBUG_USER_HMAC_SECRET:
+        "replace-this-local-development-hmac-secret-before-production",
+    });
+    expect(config.nodeEnv).toBe("development");
+  });
+
+  it("allows documented local-development placeholders outside production", () => {
+    const config = loadApiConfigFromEnv({
+      REPLAYBUG_DATABASE_URL: "postgres://localhost:5432/replaybug",
+      REPLAYBUG_AUTH_SECRET: "local-dev-secret-0123456789abcdef0123456789",
+      REPLAYBUG_USER_HMAC_SECRET:
+        "local-dev-hmac-secret-0123456789abcdef0123456789ab",
+    });
+    expect(config.nodeEnv).toBe("development");
+  });
+
+  it("rejects the local auth placeholder in production without exposing it", () => {
+    const placeholder =
+      "replace-this-local-development-auth-secret-before-production";
+    const message = errorMessage(() =>
+      loadApiConfigFromEnv({
+        ...baseEnv,
+        NODE_ENV: "production",
+        REPLAYBUG_AUTH_SECRET: placeholder,
+      }),
+    );
+    expect(message).toMatch(
+      /REPLAYBUG_AUTH_SECRET must not use a known development placeholder/,
+    );
+    expect(message).not.toContain(placeholder);
+  });
+
+  it("rejects the documented local auth placeholder in production without exposing it", () => {
+    const placeholder = "local-dev-secret-0123456789abcdef0123456789";
+    const message = errorMessage(() =>
+      loadApiConfigFromEnv({
+        ...baseEnv,
+        NODE_ENV: "production",
+        REPLAYBUG_AUTH_SECRET: placeholder,
+      }),
+    );
+    expect(message).toMatch(
+      /REPLAYBUG_AUTH_SECRET must not use a known development placeholder/,
+    );
+    expect(message).not.toContain(placeholder);
+  });
+
+  it("rejects the local HMAC placeholder in production without exposing it", () => {
+    const placeholder =
+      "replace-this-local-development-hmac-secret-before-production";
+    const message = errorMessage(() =>
+      loadApiConfigFromEnv({
+        ...baseEnv,
+        NODE_ENV: "production",
+        REPLAYBUG_USER_HMAC_SECRET: placeholder,
+      }),
+    );
+    expect(message).toMatch(
+      /REPLAYBUG_USER_HMAC_SECRET must not use a known development placeholder/,
+    );
+    expect(message).not.toContain(placeholder);
+  });
+
+  it("rejects the documented local HMAC placeholder in production without exposing it", () => {
+    const placeholder = "local-dev-hmac-secret-0123456789abcdef0123456789ab";
+    const message = errorMessage(() =>
+      loadApiConfigFromEnv({
+        ...baseEnv,
+        NODE_ENV: "production",
+        REPLAYBUG_USER_HMAC_SECRET: placeholder,
+      }),
+    );
+    expect(message).toMatch(
+      /REPLAYBUG_USER_HMAC_SECRET must not use a known development placeholder/,
+    );
+    expect(message).not.toContain(placeholder);
+  });
+
+  it("accepts strong production secrets", () => {
+    const config = loadApiConfigFromEnv({
+      ...baseEnv,
+      NODE_ENV: "production",
+      REPLAYBUG_AUTH_SECRET:
+        "production-auth-secret-0123456789abcdef0123456789",
+      REPLAYBUG_USER_HMAC_SECRET:
+        "production-hmac-secret-0123456789abcdef0123456789",
+    });
+    expect(config.nodeEnv).toBe("production");
   });
 
   it("rejects an invalid port", () => {

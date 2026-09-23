@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@replaybug/config": "workspace:*",
-    "@types/node": "22.20.3",
+    "@types/node": "24.13.6",
     "@types/pg": "8.23.1",
     "drizzle-kit": "0.31.10",
     "tsup": "8.5.1",

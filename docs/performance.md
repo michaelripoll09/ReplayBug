@@ -1,9 +1,10 @@
 # Performance evidence
 
 ReplayBug does not publish invented throughput, latency, or scale numbers. Record a
-measurement with its command, environment, input shape, revision, and complete
-output. The local benchmark is a reproducible development tool, not an SLA, load
-test, or CI gate.
+durable local benchmark with its command, environment, input shape, revision, and
+complete output. The local benchmark is reproducible evidence, not an SLA, load
+test, or CI gate. GitHub Actions covers correctness, builds, and security checks;
+benchmarking remains local and outside that gate.
 
 ## Self-contained local benchmark
 
@@ -49,13 +50,14 @@ no index or production optimization: investigate a measured pathology first.
 
 ## Measured local runs
 
-These engineering benchmarks exercised the real HTTP API, PostgreSQL, outbox,
+These local engineering benchmarks exercised the real HTTP API, PostgreSQL, outbox,
 pg-boss, worker, authenticated issue-list API, direct-SQL fixture, and `EXPLAIN`.
-They are not an SLA or a production capacity claim, and the results do not
-generalize to other hardware, PostgreSQL configurations, workloads, or deployments.
-Remote GitHub Actions were not run because this work was not pushed. Secrets were
-not printed, and benchmark databases and temporary resources were removed during
-cleanup.
+They are local measurements, not a CI performance gate, an SLA, or a production
+capacity claim; the numbers are not remote CI measurements. GitHub Actions
+separately verifies correctness, builds, and security. The results do not generalize
+to other hardware, PostgreSQL configurations, workloads, or deployments. Secrets
+were not printed, and benchmark databases and temporary resources were removed
+during cleanup.
 
 ### Primary run
 

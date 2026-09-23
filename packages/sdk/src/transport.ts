@@ -14,12 +14,10 @@ const INGEST_PATH = "/api/ingest/v1/batch";
 export class FetchTransport implements Transport {
   private baseUrl: string;
   publicKey: string;
-  private debug: boolean;
 
-  constructor(baseUrl: string, publicKey: string, debug: boolean) {
+  constructor(baseUrl: string, publicKey: string, _debug: boolean) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.publicKey = publicKey;
-    this.debug = debug;
   }
 
   async send(batch: BatchPayload): Promise<TransportResult> {
@@ -106,7 +104,7 @@ export class FetchTransport implements Transport {
 export function createTransport(
   baseUrl: string,
   publicKey: string,
-  debug: boolean,
+  _debug: boolean,
 ): Transport {
-  return new FetchTransport(baseUrl, publicKey, debug);
+  return new FetchTransport(baseUrl, publicKey, _debug);
 }

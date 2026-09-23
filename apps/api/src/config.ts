@@ -9,6 +9,15 @@ import {
 const OLLAMA_MIN_TIMEOUT_MS = 1_000;
 const OLLAMA_MAX_TIMEOUT_MS = 120_000;
 
+const UNSAFE_PRODUCTION_AUTH_SECRETS = new Set([
+  "replace-this-local-development-auth-secret-before-production",
+  "local-dev-secret-0123456789abcdef0123456789",
+]);
+const UNSAFE_PRODUCTION_USER_HMAC_SECRETS = new Set([
+  "replace-this-local-development-hmac-secret-before-production",
+  "local-dev-hmac-secret-0123456789abcdef0123456789ab",
+]);
+
 function hasControlCharacter(value: string): boolean {
   return Array.from(value).some((character) => {
     const code = character.charCodeAt(0);
@@ -109,7 +118,7 @@ export function resolveAiAnalysisCapability(input: {
  * the process exits with a human-readable message when required values are
  * missing or malformed.
  */
-export const apiConfigSchema = z.object({
+const apiConfigBaseSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).default(4001),
   host: z.string().min(1).default("0.0.0.0"),
   nodeEnv: z.enum(["development", "test", "production"]).default("development"),
@@ -224,6 +233,29 @@ export const apiConfigSchema = z.object({
     .default(UPLOAD_AGGREGATE_MAX_BYTES),
   artifactStagingDir: z.string().optional(),
 });
+
+export const apiConfigSchema = apiConfigBaseSchema.superRefine(
+  (config, context) => {
+    if (config.nodeEnv !== "production") return;
+
+    if (UNSAFE_PRODUCTION_AUTH_SECRETS.has(config.authSecret)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["authSecret"],
+        message:
+          "REPLAYBUG_AUTH_SECRET must not use a known development placeholder in production",
+      });
+    }
+    if (UNSAFE_PRODUCTION_USER_HMAC_SECRETS.has(config.userHmacSecret)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["userHmacSecret"],
+        message:
+          "REPLAYBUG_USER_HMAC_SECRET must not use a known development placeholder in production",
+      });
+    }
+  },
+);
 
 // Optional fields in the public type keep existing injected test configuration
 // compatible; loadApiConfigFromEnv always resolves demoMode from the environment.

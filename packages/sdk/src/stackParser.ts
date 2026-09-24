@@ -128,7 +128,9 @@ export function parseStackLine(line: string): Record<string, unknown> | null {
 
 /**
  * Parse stack frames from an error stack, keeping at most `maxFrames`.
- * Non-frame lines are skipped.
+ * Non-frame lines are skipped. A CR left by CRLF line endings is stripped
+ * per line before parsing so wrapped frames are still recognized; LF-only
+ * behavior is unchanged.
  */
 export function parseStackFrames(
   stack: string,
@@ -137,7 +139,8 @@ export function parseStackFrames(
   const frames: Array<Record<string, unknown>> = [];
   const lines = stack.split("\n");
   for (const line of lines) {
-    const frame = parseStackLine(line);
+    const normalizedLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+    const frame = parseStackLine(normalizedLine);
     if (frame !== null) {
       frames.push(frame);
     }

@@ -17,6 +17,7 @@ import {
 } from "../services/artifacts.js";
 import { createCliRelease, listCliReleases } from "../services/releases.js";
 import { sendDomainError } from "./helpers.js";
+import { RATE_LIMIT_POLICIES } from "../plugins/rate-limit.js";
 
 export interface CliArtifactsDeps {
   storage: ArtifactStorage;
@@ -392,6 +393,10 @@ export async function registerCliRoutes(
   app.post(
     "/api/v1/cli/releases/:version/artifacts",
     {
+      config: {
+        // Artifact upload stages, hashes, and validates file bytes (30/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.cliArtifactUpload },
+      },
       schema: {
         tags: ["CLI"],
         description:

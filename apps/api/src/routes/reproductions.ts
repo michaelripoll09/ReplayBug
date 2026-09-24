@@ -5,6 +5,7 @@ import type { Auth } from "../auth.js";
 import { getSessionUser } from "../session.js";
 import { sendDomainError } from "./helpers.js";
 import { authRequired, validationError } from "../errors.js";
+import { RATE_LIMIT_POLICIES } from "../plugins/rate-limit.js";
 import {
   getReproductionById,
   getReproductionDownload,
@@ -139,6 +140,10 @@ export async function registerReproductionRoutes(
   app.post(
     "/api/v1/events/:eventId/reproductions",
     {
+      config: {
+        // Playwright generation is CPU-heavy per request (20/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.reproductionCreate },
+      },
       schema: {
         tags: ["Reproductions"],
         params: {

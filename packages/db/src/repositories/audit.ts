@@ -1,4 +1,12 @@
-import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { auditLogs } from "../schema.js";
 import type { DbOrTx } from "./db-types.js";
 
@@ -225,7 +233,19 @@ export interface ListAuditResult {
   nextCursor: string | null;
 }
 
-/** Newest-first audit page with a stable timestamp/id keyset. */
+/**
+ * Newest-first audit page with a stable timestamp/id keyset.
+ *
+ * `audit_logs.created_at` is timestamptz (microsecond precision) while
+ * JavaScript Date round-trips milliseconds. Deriving the cursor from
+ * `Date.toISOString()` truncates sub-millisecond precision, so two rows
+ * inside the same millisecond would sort strictly above the truncated
+ * cursor and the keyset predicate would skip the remaining row. The cursor
+ * timestamp is therefore produced by PostgreSQL itself at microsecond
+ * precision in the same SELECT, and the decoded cursor string is passed
+ * back to PostgreSQL verbatim (never through JavaScript Date) so the
+ * microseconds survive end-to-end.
+ */
 export async function listAuditByWorkspacePaged(
   db: DbOrTx,
   input: ListAuditInput,
@@ -243,24 +263,25 @@ export async function listAuditByWorkspacePaged(
   }
   const limit = boundedLimit(input.limit, MAX_AUDIT_QUERY_LIMIT);
   const rows = await db
-    .select()
+    .select({
+      ...getTableColumns(auditLogs),
+      cursorCreatedAt: sql<string>`to_char(${auditLogs.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+    })
     .from(auditLogs)
     .where(and(...conditions))
     .orderBy(desc(auditLogs.createdAt), asc(auditLogs.id))
     .limit(limit + 1);
 
+  // Strip the cursor-only computed field: callers keep the AuditRow shape.
+  const page: AuditRow[] = rows
+    .slice(0, limit)
+    .map(({ cursorCreatedAt: _cursorCreatedAt, ...row }) => row);
   let nextCursor: string | null = null;
-  let page = rows;
   if (rows.length > limit) {
     const last = rows[limit - 1];
     if (last !== undefined) {
-      const created =
-        last.createdAt instanceof Date
-          ? last.createdAt.toISOString()
-          : new Date(last.createdAt).toISOString();
-      nextCursor = encodeAuditCursor(created, last.id);
+      nextCursor = encodeAuditCursor(last.cursorCreatedAt, last.id);
     }
-    page = rows.slice(0, limit);
   }
   return { rows: page, nextCursor };
 }

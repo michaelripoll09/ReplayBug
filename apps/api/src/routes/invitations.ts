@@ -5,6 +5,7 @@ import type { Auth } from "../auth.js";
 import { getSessionUser } from "../session.js";
 import { sendDomainError } from "./helpers.js";
 import { authRequired } from "../errors.js";
+import { RATE_LIMIT_POLICIES } from "../plugins/rate-limit.js";
 import {
   acceptWorkspaceInvitation,
   createWorkspaceInvitation,
@@ -135,6 +136,10 @@ export async function registerInvitationRoutes(
   app.post(
     "/api/v1/workspaces/:workspaceId/invitations",
     {
+      config: {
+        // Invitation creation mints access grants (30/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.invitationMutation },
+      },
       schema: {
         tags: ["Invitations"],
         params: workspaceParams,
@@ -209,6 +214,10 @@ export async function registerInvitationRoutes(
   app.delete(
     "/api/v1/workspaces/:workspaceId/invitations/:invitationId",
     {
+      config: {
+        // Invitation revocation kills pending access grants (30/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.invitationMutation },
+      },
       schema: {
         tags: ["Invitations"],
         params: {
@@ -254,6 +263,10 @@ export async function registerInvitationRoutes(
   app.post(
     "/api/v1/invitations/:token/accept",
     {
+      config: {
+        // Invitation acceptance consumes access grants (30/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.invitationMutation },
+      },
       schema: {
         tags: ["Invitations"],
         params: {

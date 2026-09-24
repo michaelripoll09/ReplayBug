@@ -27,8 +27,20 @@ export interface ReplayBugApiClient {
   }): Promise<T>;
 }
 
+/**
+ * Strip trailing "/" characters with a linear backward scan.
+ * (Replaces the previous `/\/+$/` regex to avoid polynomial backtracking.)
+ */
+export function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 0x2f) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
 function normalizeBaseUrl(baseUrl: string): string {
-  const normalized = baseUrl.replace(/\/+$/, "");
+  const normalized = stripTrailingSlashes(baseUrl);
   if (normalized.length === 0) {
     throw new Error("createReplayBugApiClient requires a non-empty baseUrl");
   }

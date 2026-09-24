@@ -10,6 +10,7 @@
 
 export {
   createReplayBugApiClient,
+  stripTrailingSlashes,
   type CreateReplayBugApiClientOptions,
   type ReplayBugApiClient,
   type ReplayBugApiPaths,
@@ -33,12 +34,14 @@ export interface ApiClient {
   readonly baseUrl: string;
 }
 
+import { stripTrailingSlashes } from "./client.js";
+
 /**
  * @deprecated Minimal foundation handle. Prefer `createReplayBugApiClient`,
  * which carries the same normalized baseUrl plus the typed fetch client.
  */
 export function createApiClient(options: ApiClientOptions): ApiClient {
-  const normalized = options.baseUrl.replace(/\/+$/, "");
+  const normalized = stripTrailingSlashes(options.baseUrl);
   if (normalized.length === 0) {
     throw new Error("createApiClient requires a non-empty baseUrl");
   }

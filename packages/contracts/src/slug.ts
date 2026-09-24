@@ -1,15 +1,11 @@
 /**
- * Deterministic tag slug normalization.
+ * Shared linear slug normalization.
  *
- * Mirrors `normalizeProjectSlug` semantics so every project-local tag name
- * maps to exactly one stable slug: the `unique(project_id, slug)` constraint
- * then deduplicates equivalent spellings ("Needs Triage" vs "needs_triage").
- * Returns "" when nothing usable remains; callers reject empty slugs.
- *
- * Implemented as an explicit O(n) single-pass algorithm (no
- * repeated-quantifier regexes). Kept local to `packages/db` on purpose so
- * the persistence layer does not gain a dependency on `packages/contracts`
- * for ten lines of safe code.
+ * Preserves the exact semantics of the previous chained-regex pipeline
+ * (trim, lowercase, spaces/whitespace/underscores to hyphen, drop characters
+ * outside ASCII a-z/0-9/hyphen, collapse repeated hyphens, strip
+ * leading/trailing hyphens) with an explicit O(n) single-pass algorithm and
+ * no repeated-quantifier regular expressions.
  */
 
 /** True for every character matched by `\s` (WhiteSpace + LineTerminator). */
@@ -33,7 +29,12 @@ function isSlugWhitespace(code: number): boolean {
   );
 }
 
-export function normalizeTagSlug(input: string): string {
+/**
+ * Normalize a slug in linear time: trim, lowercase, map `_`/whitespace/`-`
+ * runs to a single hyphen, drop every other non-`[a-z0-9-]` character, and
+ * strip leading/trailing hyphens. Returns "" when nothing usable remains.
+ */
+export function normalizeSlugValue(input: string): string {
   const lowered = input.trim().toLowerCase();
   let out = "";
   let lastWasHyphen = true;

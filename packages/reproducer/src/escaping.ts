@@ -14,10 +14,28 @@ export function stripControlChars(value: string): string {
 }
 
 /**
+ * Replace every literal occurrence of `search` without a regex, so
+ * comment-boundary defenses never depend on an HTML-filtering regex shape.
+ */
+function replaceAllLiteral(
+  value: string,
+  search: string,
+  replacement: string,
+): string {
+  if (search === "") {
+    return value;
+  }
+  return value.split(search).join(replacement);
+}
+
+/**
  * Render an untrusted string as a single-quoted TypeScript literal.
  * The result is always a valid inert literal: backslash, single quote,
  * newlines and templateInterpolation are escaped; no backticks or ${}
  * can break out because output uses single quotes with full escaping.
+ *
+ * U+2028/U+2029 need no handling here: `stripControlChars` already removes
+ * them before escaping, so they can never reach the generated literal.
  */
 export function tsSingleQuoteLiteral(value: string): string {
   const cleaned = stripControlChars(value);
@@ -25,9 +43,7 @@ export function tsSingleQuoteLiteral(value: string): string {
     .replace(/\\/g, "\\\\")
     .replace(/'/g, "\\'")
     .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/\u2028/g, "\u2028")
-    .replace(/\u2029/g, "\u2029");
+    .replace(/\r/g, "\\r");
   return `'${escaped}'`;
 }
 
@@ -36,13 +52,17 @@ export function tsSingleQuoteLiteral(value: string): string {
  * newlines, comment terminators and control characters.
  */
 export function safeCommentFragment(value: string, maxLength = 300): string {
-  const cleaned = stripControlChars(value)
-    .replace(/(\r\n|\r|\n)/g, " ")
-    .replace(/\*\//g, "* /")
-    .replace(/<!--/g, "< !--")
-    .replace(/-->/g, "-- >")
-    .replace(/\s+/g, " ")
-    .trim();
+  const collapsed = stripControlChars(value).replace(/(\r\n|\r|\n)/g, " ");
+  const defended = replaceAllLiteral(
+    replaceAllLiteral(
+      replaceAllLiteral(collapsed, "*/", "* /"),
+      "<!--",
+      "< !--",
+    ),
+    "-->",
+    "-- >",
+  );
+  const cleaned = defended.replace(/\s+/g, " ").trim();
   if (cleaned.length <= maxLength) return cleaned;
   return `${cleaned.slice(0, maxLength - 1)}…`;
 }

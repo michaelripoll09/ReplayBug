@@ -27,6 +27,7 @@ import {
 import { BreadcrumbBuffer, createBreadcrumb } from "./breadcrumbs.js";
 import { createTransport, type Transport } from "./transport.js";
 import { createEventQueue, type EventQueue } from "./queue.js";
+import { parseStackFrames } from "./stackParser.js";
 import { setupNetworkCapture } from "./autoCapture.js";
 import { setupClickCapture } from "./autoCapture.js";
 import { setupNavigationCapture } from "./autoCapture.js";
@@ -338,7 +339,7 @@ export class ReplayBug {
           type: error.name,
           value: error.message,
           stacktrace: error.stack
-            ? { frames: parseStackFrames(error.stack) }
+            ? { frames: parseSdkStackFrames(error.stack) }
             : undefined,
           mechanism: { type: "generic", handled: true },
         },
@@ -558,31 +559,10 @@ export class ReplayBug {
 }
 
 /**
- * Parse stack frames from error stack
+ * Parse stack frames from error stack (linear deterministic parser).
  */
-function parseStackFrames(stack: string): Array<Record<string, unknown>> {
-  const frames: Array<Record<string, unknown>> = [];
-  const lines = stack.split("\n");
-
-  for (const line of lines) {
-    const match = line.match(
-      /^\s*at\s+(?:(.+?)\s+\()?(?:(.+?):(\d+):(\d+)|(.+?):(\d+)|(.+))\)?/,
-    );
-    if (match) {
-      const [, fn, file1, line1, col1, file2, line2, file3] = match;
-      frames.push({
-        function: fn ? sanitizeString(fn) : undefined,
-        filename: sanitizeString(file1 || file2 || file3 || ""),
-        lineno: parseInt(line1 || line2 || "0", 10) || undefined,
-        colno: parseInt(col1 || "0", 10) || undefined,
-        in_app: !/(node_modules|webpack|\/vendor\/)/.test(
-          file1 || file2 || file3 || "",
-        ),
-      });
-    }
-  }
-
-  return frames.slice(0, TELEMETRY_LIMITS.MAX_STACK_FRAMES);
+function parseSdkStackFrames(stack: string): Array<Record<string, unknown>> {
+  return parseStackFrames(stack, TELEMETRY_LIMITS.MAX_STACK_FRAMES);
 }
 
 /**

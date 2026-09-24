@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeSlugValue } from "./slug.js";
 
 /** Workspace roles. Exact set; no other value is valid anywhere. */
 export const workspaceRoleSchema = z.enum([
@@ -217,11 +218,5 @@ export type WorkspaceInvitationAcceptResponse = z.infer<
 
 /** Normalize a workspace slug: trim, lowercase, spaces/underscores to hyphens. */
 export function normalizeWorkspaceSlug(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return normalizeSlugValue(input);
 }

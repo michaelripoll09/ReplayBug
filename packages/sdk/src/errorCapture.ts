@@ -6,6 +6,7 @@ import {
   type ClientEvent,
 } from "./config.js";
 import { createBreadcrumb } from "./breadcrumbs.js";
+import { parseStackFrames } from "./stackParser.js";
 import type { SdkState } from "./config.js";
 
 /**
@@ -166,33 +167,10 @@ function buildExceptionPayload(
 }
 
 /**
- * Parse stack trace into frames
+ * Parse stack trace into frames (linear deterministic parser).
  */
 function parseStackTrace(stack: string): Array<Record<string, unknown>> {
-  const frames: Array<Record<string, unknown>> = [];
-  const lines = stack.split("\n");
-
-  for (const line of lines) {
-    // Chrome/Firefox format: "at FunctionName (file.js:123:45)"
-    // or "at file.js:123:45"
-    const match = line.match(
-      /^\s*at\s+(?:(.+?)\s+\()?(?:(.+?):(\d+):(\d+)|(.+?):(\d+)|(.+))\)?/,
-    );
-    if (match) {
-      const [, fn, file1, line1, col1, file2, line2, file3] = match;
-      frames.push({
-        function: fn ? sanitizeString(fn) : undefined,
-        filename: sanitizeString(file1 || file2 || file3 || ""),
-        lineno: parseInt(line1 || line2 || "0", 10) || undefined,
-        colno: parseInt(col1 || "0", 10) || undefined,
-        in_app: !/(node_modules|webpack|\/vendor\/)/.test(
-          file1 || file2 || file3 || "",
-        ),
-      });
-    }
-  }
-
-  return frames.slice(0, 100); // Max 100 frames
+  return parseStackFrames(stack, 100); // Max 100 frames
 }
 
 /**

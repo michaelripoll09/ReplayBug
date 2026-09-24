@@ -219,22 +219,75 @@ export function parseDsn(dsn: string): DsnParseResult {
 }
 
 /**
+ * Web Crypto accessor for identifier generation.
+ *
+ * Browser-only SDK: uses `globalThis.crypto` (Web Crypto) with no Node-only
+ * imports. Fails closed when Web Crypto is unavailable instead of silently
+ * falling back to predictable randomness.
+ */
+function requireWebCrypto(): Crypto {
+  const webCrypto = globalThis.crypto;
+  if (!webCrypto || typeof webCrypto.getRandomValues !== "function") {
+    throw new Error(
+      "ReplayBug SDK requires Web Crypto (globalThis.crypto.getRandomValues) " +
+        "to generate identifiers",
+    );
+  }
+  return webCrypto;
+}
+
+/** Renders bytes as lowercase hex (two chars per byte). */
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (const byte of bytes) {
+    out += byte.toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+/** Cryptographically secure random hex string (`length` hex chars). */
+function secureRandomHex(length: number): string {
+  const byteCount = Math.ceil(length / 2);
+  const bytes = new Uint8Array(byteCount);
+  requireWebCrypto().getRandomValues(bytes);
+  return bytesToHex(bytes).slice(0, length);
+}
+
+/**
  * Generate a UUID v4 (for event IDs, session IDs)
+ *
+ * Prefers `crypto.randomUUID()` when available; otherwise builds a
+ * standards-compliant UUID v4 from `crypto.getRandomValues()` with correct
+ * version (4) and variant (10xx) bits. Never uses `Math.random()`.
  */
 export function generateUuid(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  const webCrypto = requireWebCrypto();
+  if (typeof webCrypto.randomUUID === "function") {
+    return webCrypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  webCrypto.getRandomValues(bytes);
+  const versionByte = bytes[6] ?? 0;
+  const variantByte = bytes[8] ?? 0;
+  bytes[6] = (versionByte & 0x0f) | 0x40;
+  bytes[8] = (variantByte & 0x3f) | 0x80;
+  const hex = bytesToHex(bytes);
+  return (
+    `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-` +
+    `${hex.slice(16, 20)}-${hex.slice(20)}`
+  );
 }
 
 /**
  * Generate session ID (UUID v7-like with timestamp prefix for sortability)
+ *
+ * Keeps the existing timestamp-prefixed sortable shape; the random section
+ * now comes from `crypto.getRandomValues()` (48 bits of secure randomness,
+ * matching the previous 12-hex-char width) instead of `Math.random()`.
  */
 export function generateSessionId(): string {
   const timestamp = Date.now().toString(16).padStart(12, "0");
-  const random = Math.random().toString(16).slice(2, 14).padStart(12, "0");
+  const random = secureRandomHex(12).padStart(12, "0");
   return `${timestamp.slice(0, 8)}-${timestamp.slice(8)}-4${random.slice(0, 3)}-8${random.slice(3, 6)}-${random.slice(6)}`;
 }
 

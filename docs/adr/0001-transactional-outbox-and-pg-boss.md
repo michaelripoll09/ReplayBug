@@ -1,6 +1,6 @@
 # ADR 0001 — Transactional outbox with pg-boss (PostgreSQL jobs, no Redis)
 
-Status: accepted (Block 5)
+Status: accepted
 
 ## Problem
 

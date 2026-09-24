@@ -1,6 +1,6 @@
 # ADR 0005 — Privacy-safe input capture defaults
 
-Status: accepted (Block 8)
+Status: accepted
 
 ## Problem
 

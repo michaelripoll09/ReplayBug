@@ -1,8 +1,8 @@
 # ADR 0003 — Local-first artifact storage abstraction
 
-Status: accepted (Block 7)
+Status: accepted
 
-> **Superseded in part — 2025-07-16 (Block 9).** The original worker-read-only
+> **Superseded in part — 2025-07-16.** The original worker-read-only
 > access split is superseded for retention and deletion cleanup. The
 > abstraction remains local-first, but the worker now reads for symbolication
 > and deletes durable cleanup artifacts; its shared artifact mount must be
@@ -49,9 +49,10 @@ telemetry down with it.
 - **Writes are atomic** (temp file + fsync + rename, cleanup on every
   failure path) with temp-file compensation on the upload pipeline, so
   outages never leave orphaned blobs or rows.
-- **Historical access split (superseded by Block 9):** the API writes and the
-  worker only reads (`Pick<ArtifactStorage, "get">`, read-only volume mount).
-  **Current Block 9 access:** the API writes uploads; the worker reads maps for
+- **Historical access split (superseded by the 2025-07-16 lifecycle update):**
+  the API writes and the worker only reads (`Pick<ArtifactStorage, "get">`,
+  read-only volume mount). **Current access:** the API writes uploads; the
+  worker reads maps for
   symbolication and deletes durable artifact-deletion outbox entries through a
   shared writable artifact mount. Configuration is validated in one shared home
   (`@replaybug/artifacts` `config.ts`): the API fails fast on a bad root, while
@@ -70,9 +71,9 @@ telemetry down with it.
 - Single-node durability only: no replication, no CDN, no multi-writer
   story — acceptable for the self-host target, and the seam keeps a
   future backend possible.
-- **Historical cost statement (superseded by Block 9):** operators owned disk
-  growth until a later retention cleanup arrived; release+path immutability
-  meant bytes only accumulated. **Current Block 9 behavior:** telemetry
+- **Historical cost statement (superseded by the 2025-07-16 lifecycle update):**
+  operators owned disk growth until retention cleanup arrived; release+path
+  immutability meant bytes only accumulated. **Current behavior:** telemetry
   retention removes eligible raw evidence, and the worker durably deletes
   queued release artifacts after project or workspace deletion.
 - No external fetching, ever: maps enter only through the upload

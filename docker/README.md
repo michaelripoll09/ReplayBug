@@ -72,13 +72,17 @@ at `/var/lib/replaybug/artifacts`; do not make the worker mount read-only.
 
 - PostgreSQL host access defaults to `localhost:5544`; API, worker, and tools
   use the internal `postgres:5432` address.
-- Compose defaults are local bootstrap values only. Replace database and app
-  secrets before exposing a deployment.
+- The PostgreSQL defaults are development placeholders. Supply fresh database
+  credentials and the required, freshly generated app secrets before exposing
+  a deployment.
 - `NEXT_PUBLIC_REPLAYBUG_API_URL` and Vite `VITE_*` values are build-time
   browser configuration. Rebuild web/demo after changing them.
-- Ollama is absent and disabled by default. To use an operator-provided
-  instance, set both `REPLAYBUG_OLLAMA_URL` and `REPLAYBUG_OLLAMA_MODEL` on API
-  and worker; do not add it as a required service.
+- Compose forwards `REPLAYBUG_TRUSTED_ORIGINS` when supplied. Otherwise the API
+  uses `REPLAYBUG_WEB_URL` as the trusted dashboard origin.
+- Ollama is absent and disabled by default. Compose forwards optional Ollama
+  settings to API and worker when supplied; set `REPLAYBUG_OLLAMA_URL` and
+  `REPLAYBUG_OLLAMA_MODEL` together. No Ollama service is included or required,
+  and core telemetry and issue grouping do not depend on it.
 - GitHub integration is not required by this stack.
 
 See [`docs/self-hosting.md`](../docs/self-hosting.md) for reverse-proxy,

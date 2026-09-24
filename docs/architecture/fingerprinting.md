@@ -1,4 +1,4 @@
-# Fingerprinting and Issue Grouping (Block 5)
+# Fingerprinting and Issue Grouping
 
 Issue grouping must be deterministic and explainable: the same defect groups
 into the same issue, and a different defect never silently joins it. This
@@ -157,15 +157,15 @@ construction, and differing signatures cannot share a hash unless SHA-256
 itself collides. To investigate a suspected over-merge, inspect the signature
 (which placeholders were applied) rather than the hash.
 
-## Known limitations before source-map support
+## Raw-stack fallback limitations
 
-- Frames are the **raw sanitized stack** sent by the browser. Minified
-  releases therefore group by minified file/line (`/assets/index-:hash.js:1`),
-  which still separates defects by message/class but cannot distinguish two
-  different minified call sites with the same message.
-- No symbolication, no release artifacts, no source-map lookup exists yet.
-- The signature builder takes frames as input without knowing where they came
-  from, so symbolicated frames can be fed in later (a dedicated block) without
-  changing the caller semantics or invalidating grouping rules.
+- When source maps are unavailable, frames are the **raw sanitized stack** sent
+  by the browser. Minified releases then group by minified file/line
+  (`/assets/index-:hash.js:1`), which still separates defects by message/class
+  but cannot distinguish two different minified call sites with the same
+  message.
+- The signature builder takes frames as input without knowing their source, so
+  the source-map pipeline can supply symbolicated frames without changing the
+  grouping rules.
 - Console locations and chained-exception analysis are not implemented; only
   `values[0]` participates.

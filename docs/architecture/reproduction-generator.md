@@ -1,13 +1,14 @@
-# Playwright Reproduction Generator (Block 8)
+# Playwright Reproduction Generator
 
-Block 8 generates a portable Playwright TypeScript test from one retained
-occurrence. It is a pure two-stage pipeline — plan then render — with no
-model inference, no remote browsing, and no server-side test execution.
-The server writes code as text; the developer runs it locally.
+ReplayBug generates a portable Playwright TypeScript test from one retained
+occurrence through a deterministic two-stage pipeline: plan, then render. The
+generator performs no model inference, remote browsing, or arbitrary
+server-side execution of customer tests. The server writes code as text; the
+developer runs it locally.
 
-Issue workflow, session timelines, SSE, releases and source maps are prior
-blocks. Retention and invitation cleanup are now operational concerns; Ollama
-analysis and public demo mode remain out of scope.
+Optional Ollama analysis is a separately shipped capability, not a generator
+or generator dependency. The public synthetic demo is also a separate shipped
+capability. Retention and invitation cleanup are operational worker concerns.
 
 ## Pipeline
 

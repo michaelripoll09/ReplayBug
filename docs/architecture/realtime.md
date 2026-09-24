@@ -1,6 +1,6 @@
-# Realtime — SSE Invalidation via PostgreSQL LISTEN/NOTIFY (Block 6)
+# Realtime — SSE Invalidation via PostgreSQL LISTEN/NOTIFY
 
-> Complete through T18 (server T12, web client T13, E2E T17).
+> Covers the server broker, web client, and end-to-end behavior.
 
 ## Path
 
@@ -70,7 +70,7 @@ This matches the threat model: stream payloads contain no sensitive data
 by construction, so a lingering stream leaks nothing beyond "something
 changed in a project the user could recently see".
 
-## Web client (T13)
+## Web client
 
 - `apps/web/lib/realtime.ts` — `createProjectEventStream`: validated URL
   (http(s)/same-origin only, UUID project), typed parse + validation of

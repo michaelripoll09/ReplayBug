@@ -1,4 +1,4 @@
-# Tenancy, Governance and Project Lifecycle (Block 9)
+# Tenancy, Governance and Project Lifecycle
 
 ReplayBug uses Better Auth users and workspace memberships. Project access derives
 from the workspace; there is no project-membership system.
@@ -108,8 +108,10 @@ See [Worker](worker.md) for runners and configuration, and
 
 ## Auth and credentials
 
-Better Auth uses email/password with PostgreSQL persistence, HttpOnly cookies,
-Secure-in-production and SameSite Lax settings. There is no OAuth, SSO, or
-billing integration. Public ingest keys remain one-time plaintext at creation
-or rotation, hash at rest, and are separate from CLI Bearer tokens and browser
-sessions.
+Better Auth supports email/password with PostgreSQL persistence, HttpOnly
+cookies, Secure-in-production and SameSite Lax settings. GitHub OAuth is
+optional and is enabled only when `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET` are configured together. ReplayBug has no enterprise
+SSO or billing integration. Public ingest keys, CLI secret Bearer tokens, and
+browser/dashboard sessions remain separate credential classes; ingest keys are
+shown in plaintext only at creation or rotation and are hashed at rest.

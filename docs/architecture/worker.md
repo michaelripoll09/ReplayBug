@@ -1,4 +1,4 @@
-# Worker, Outbox and Operations (Block 9)
+# Worker, Outbox and Operations
 
 `apps/worker` runs asynchronous issue processing and bounded operational cleanup.
 It has no HTTP server. PostgreSQL, pg-boss, and the shared local artifact

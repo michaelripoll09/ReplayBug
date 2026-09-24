@@ -1,10 +1,10 @@
-# Dashboard — Issues API, Metrics, Realtime (Block 6)
+# Dashboard — Issues API, Metrics, Realtime
 
-> Complete through T18. Covers the Block 6 dashboard: query shapes,
-> metrics, timelines, DTO boundaries, search, realtime fan-out, cache
-> invalidation, degradation, authz and output security.
+> Covers dashboard query shapes, metrics, timelines, DTO boundaries, search,
+> realtime fan-out, cache invalidation, degradation, authz, and output
+> security.
 
-## Search strategy (T05)
+## Search strategy
 
 Issue search uses PostgreSQL only. No Elasticsearch, Meilisearch or other
 service is introduced.
@@ -31,7 +31,7 @@ service is introduced.
   (`frontend`), empty-result and cross-project isolation integration tests
   on real PostgreSQL (`issues-list.integration.test.ts`).
 
-## Query and index notes (T16)
+## Query and index notes
 
 Observed 2026-09-18 on dev PostgreSQL with a 200-issue single-project
 fixture (`EXPLAIN (ANALYZE, BUFFERS)`, representative list shapes):
@@ -62,7 +62,7 @@ fixture (`EXPLAIN (ANALYZE, BUFFERS)`, representative list shapes):
   project-local `issue_tags_project_slug_unique`; batch tag hydration
   (`listTagsForIssues`) keeps the list at constant query count.
 
-## Metrics (T06)
+## Metrics
 
 `GET /api/v1/projects/:projectId/metrics?range=24h|7d|30d`
 (`MetricsRepo.getProjectMetrics`, all-SQL aggregates — `COUNT`,
@@ -81,7 +81,7 @@ load):
 - **Gotcha**: `node-pg` returns `date_trunc` `timestamp` as string, not
   `Date` — the repo normalizes both shapes (`bucketTime`).
 
-## Timelines (T07/T10)
+## Timelines
 
 - **Occurrences** (`GET .../issues/:id/occurrences`): envelope metadata
   only (ids, timestamps, env/release/page/type/state), newest-first,
@@ -98,7 +98,7 @@ load):
   before / 5 after by sequence, bounded (100/50). Powers both the embedded
   issue-detail window and full session splicing without loading sessions.
 
-## DTO boundaries (T03)
+## DTO boundaries
 
 Contracts (`@replaybug/contracts`) are the public promise; service mappers
 (`apps/api/src/services/dto.ts`) build them field-by-field — never by
@@ -107,10 +107,10 @@ spreading Drizzle rows. Never exposed: `fingerprint` material,
 pg-boss internals, `mechanism.data`, comment bodies inside activity
 metadata. Fastify serializes responses with `fast-json-stringify`, which
 **drops undeclared keys from bare `type: object` schemas** — activity
-`metadata` therefore declares `additionalProperties: true` (learned the
-hard way in T09).
+`metadata` therefore declares `additionalProperties: true` so serialized
+activity metadata is retained.
 
-## Authz (T02/T04–T12)
+## Authz
 
 Central `policy.ts` capabilities, enforced server-side on every route via
 `requireWorkspaceCapability` (+ `requireProjectAccess` anti-enumeration,
@@ -126,17 +126,17 @@ cross-tenant reads as NOT_FOUND):
 - The web `lib/rbac.ts` mirrors affordances for hiding controls only —
   the API is the authority.
 
-## Cache invalidation (T13)
+## Cache invalidation
 
 `apps/web/lib/queries.ts` key factories (param-stable tuples) +
 `useProjectRealtime` hook mapping stream types to **exact key prefixes**
 (list/detail/metrics/comments/activity/tags) — never a global
 `invalidateQueries()`. Mutations invalidate the same targeted keys.
 
-## Degraded operation (T12/T16)
+## Degraded operation
 
-- **Worker down**: ingest still stores + outboxes (prior blocks); the
-  dashboard reads aggregates that simply stop advancing.
+- **Worker down**: ingest still stores and outboxes events; the dashboard reads
+  aggregates that simply stop advancing.
 - **SSE down**: the stream opens `degraded` (ready gated on LISTEN via
   `broker.whenReady()`); every view works through normal REST refetch.
   `pg_notify` with no listeners is a no-op, so mutations commit normally.
@@ -144,7 +144,7 @@ cross-tenant reads as NOT_FOUND):
   notes; missing source maps → raw stacks (see below); empty states
   distinguish "no issues" from "no matches".
 
-## Output security (T15)
+## Output security
 
 - Zero `dangerouslySetInnerHTML` in app code (audited); telemetry renders
   as React text (auto-escaped).
@@ -152,8 +152,8 @@ cross-tenant reads as NOT_FOUND):
   - `rehype-sanitize`, deliberately no `rehype-raw`): scripts, handlers
     and `javascript:` URLs are stripped; links get
     `rel="noopener noreferrer nofollow"`.
-- Raw stacks render as monospace **text** labeled "unsymbolicated" —
-  symbolication is a later block and nothing implies otherwise.
+- Raw stacks render as monospace **text** labeled "unsymbolicated"; mapped
+  stacks remain a distinct source-map-derived view.
 - Static headers (`nosniff`, strict referrer, `DENY` framing) ship in
   `next.config.ts`. No static script-src CSP: it would break Next.js
   hydration or need `unsafe-inline`; script XSS defense rests on the two

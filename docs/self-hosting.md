@@ -31,6 +31,12 @@ docker compose -f docker-compose.full.yml --profile migrate run --rm migrate
 docker compose -f docker-compose.full.yml up -d api worker web demo
 ```
 
+GitHub OAuth is optional. Full Compose forwards `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET` to the API when the host supplies them; configure both
+together. Email/password authentication and core operation work without any
+GitHub integration. Keep OAuth credentials in deployment-managed environment
+or secrets, and never commit the client secret.
+
 Migrations are intentionally **not** run by API or worker startup. PostgreSQL,
 API, web, and demo have healthchecks, and Compose dependencies wait for health
 rather than using arbitrary sleeps. The worker validates PostgreSQL itself at

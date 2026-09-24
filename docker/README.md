@@ -83,7 +83,10 @@ at `/var/lib/replaybug/artifacts`; do not make the worker mount read-only.
   settings to API and worker when supplied; set `REPLAYBUG_OLLAMA_URL` and
   `REPLAYBUG_OLLAMA_MODEL` together. No Ollama service is included or required,
   and core telemetry and issue grouping do not depend on it.
-- GitHub integration is not required by this stack.
+- GitHub integration is not required for core operation; email/password auth
+  works without it. Optional GitHub OAuth uses paired `GITHUB_CLIENT_ID` and
+  `GITHUB_CLIENT_SECRET` API passthrough; keep credentials in deployment-managed
+  environment or secrets, and never commit the client secret.
 
 See [`docs/self-hosting.md`](../docs/self-hosting.md) for reverse-proxy,
 backup, restore, cookie, and CORS guidance.

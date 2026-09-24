@@ -37,8 +37,120 @@ const MEMORY_ADDRESS_PATTERN = /0x[0-9a-fA-F]{6,}/g;
 const LONG_INTEGER_PATTERN = /\b\d{5,}\b/g;
 const LONG_HEX_PATTERN = /\b[0-9a-fA-F]{8,}\b/g;
 const OPAQUE_TOKEN_PATTERN = /\b[A-Za-z0-9_-]{20,}\b/g;
-const URL_LIKE_PATTERN =
-  /(?:[a-zA-Z][a-zA-Z0-9+.-]*:\/\/|\/\/|\/)[^\s"'`<>()[\]{}\\]+/g;
+
+/**
+ * Delimiters that end a URL/path token: whitespace plus the exact characters
+ * excluded by the previous URL-like regex (`"'`<>()[]{}\` and
+ * backslash). Kept as explicit comparisons so tokenization stays
+ * byte-identical without a polynomial regex.
+ */
+function isUrlDelimiter(code: number): boolean {
+  return (
+    code === 0x20 || // space
+    code === 0x09 || // \t
+    code === 0x0a || // \n
+    code === 0x0b || // \v
+    code === 0x0c || // \f
+    code === 0x0d || // \r
+    code === 0x22 || // "
+    code === 0x27 || // '
+    code === 0x60 || // `
+    code === 0x3c || // <
+    code === 0x3e || // >
+    code === 0x28 || // (
+    code === 0x29 || // )
+    code === 0x5b || // [
+    code === 0x5d || // ]
+    code === 0x7b || // {
+    code === 0x7d || // }
+    code === 0x5c // backslash
+  );
+}
+
+function isAsciiLetterCode(code: number): boolean {
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+}
+
+/** Characters allowed after the leading letter of a URL scheme. */
+function isSchemeCharCode(code: number): boolean {
+  return (
+    isAsciiLetterCode(code) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code === 0x2b || // +
+    code === 0x2e || // .
+    code === 0x2d // -
+  );
+}
+
+/**
+ * Replaces URL-like tokens (scheme URLs, protocol-relative URLs, absolute
+ * paths) via a single linear scan.
+ *
+ * A token starts at `/` followed by a non-delimiter (covering both `//...`
+ * and `/...`), or at `<scheme>://` with at least one non-delimiter after
+ * the prefix, where the scheme is an ASCII letter followed by ASCII
+ * letters/digits/`+`/`.`/`-`. Tokens extend over non-delimiter characters.
+ * This mirrors the previous regex match boundaries exactly; each character
+ * is visited a constant number of times, so the scan is O(n).
+ */
+function replaceUrlLikeTokens(
+  message: string,
+  replace: (token: string) => string,
+): string {
+  const n = message.length;
+  let out = "";
+  let cursor = 0;
+  let i = 0;
+  while (i < n) {
+    const code = message.charCodeAt(i);
+    let tokenEnd = -1;
+    if (code === 0x2f) {
+      // '/': token only when a non-delimiter follows (as with `/...`).
+      if (i + 1 < n && !isUrlDelimiter(message.charCodeAt(i + 1))) {
+        let j = i + 1;
+        while (j < n && !isUrlDelimiter(message.charCodeAt(j))) {
+          j += 1;
+        }
+        tokenEnd = j;
+      }
+    } else if (isAsciiLetterCode(code)) {
+      // '<scheme>://': greedy scheme run, then literal "://" plus content.
+      let j = i + 1;
+      while (j < n && isSchemeCharCode(message.charCodeAt(j))) {
+        j += 1;
+      }
+      if (
+        j + 3 < n &&
+        message.charCodeAt(j) === 0x3a &&
+        message.charCodeAt(j + 1) === 0x2f &&
+        message.charCodeAt(j + 2) === 0x2f &&
+        !isUrlDelimiter(message.charCodeAt(j + 3))
+      ) {
+        let k = j + 4;
+        while (k < n && !isUrlDelimiter(message.charCodeAt(k))) {
+          k += 1;
+        }
+        tokenEnd = k;
+      } else {
+        // No "://" follows this scheme-char run, and no position inside
+        // the run can start a scheme token (the same run and the same
+        // following text would be re-examined), so skip the whole run.
+        i = j;
+        continue;
+      }
+    }
+    if (tokenEnd === -1) {
+      i += 1;
+      continue;
+    }
+    out += message.slice(cursor, i);
+    out += replace(message.slice(i, tokenEnd));
+    cursor = tokenEnd;
+    i = tokenEnd;
+  }
+  out += message.slice(cursor);
+  return out;
+}
 
 const NUMERIC_SEGMENT_PATTERN = /^\d{5,}$/;
 const HEX_SEGMENT_PATTERN = /^[0-9a-fA-F]{8,}$/;
@@ -46,7 +158,25 @@ const OPAQUE_SEGMENT_PATTERN = /^[A-Za-z0-9_-]{20,}$/;
 const FILE_EXTENSION_PATTERN = /\.[A-Za-z0-9]{1,8}$/;
 const EMBEDDED_HASH_PATTERN =
   /([._-])([A-Za-z0-9]{6,})(?=\.[A-Za-z0-9]{1,8}$)/g;
-const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?)\]}"']+$/;
+
+/**
+ * Exact punctuation set previously matched by the trailing-punctuation
+ * regex (`[.,;:!?)\]}\"']+$`). Kept as an explicit set so the backward
+ * scan below stays byte-identical without a polynomial regex.
+ */
+const TRAILING_PUNCTUATION_CHARS = new Set([
+  ".",
+  ",",
+  ";",
+  ":",
+  "!",
+  "?",
+  ")",
+  "]",
+  "}",
+  '"',
+  "'",
+]);
 
 function containsAsciiDigit(value: string): boolean {
   return /[0-9]/.test(value);
@@ -84,17 +214,22 @@ export function capText(value: string, maxLength: number): string {
   return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
 }
 
+/**
+ * Splits trailing punctuation (`.,;:!?)]}\"'`) with an explicit backward
+ * scan: linear, no regex. Returns the core and the trailing run exactly as
+ * the previous regex extraction did.
+ */
 function splitTrailingPunctuation(value: string): {
   core: string;
   trailing: string;
 } {
-  const match = TRAILING_PUNCTUATION_PATTERN.exec(value);
-  if (match === null) {
-    return { core: value, trailing: "" };
+  let end = value.length;
+  while (end > 0 && TRAILING_PUNCTUATION_CHARS.has(value.charAt(end - 1))) {
+    end -= 1;
   }
   return {
-    core: value.slice(0, value.length - match[0].length),
-    trailing: match[0],
+    core: value.slice(0, end),
+    trailing: value.slice(end),
   };
 }
 
@@ -203,7 +338,7 @@ export function normalizeFilename(filename: string): string {
  */
 export function normalizeMessage(message: string): string {
   let out = message.replace(/\s+/g, " ").trim();
-  out = out.replace(URL_LIKE_PATTERN, (match) => {
+  out = replaceUrlLikeTokens(out, (match) => {
     const { core, trailing } = splitTrailingPunctuation(match);
     return `${normalizePath(core)}${trailing}`;
   });

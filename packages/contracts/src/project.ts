@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeSlugValue } from "./slug.js";
 
 /** Project DTO. Never includes key material. */
 export const projectSchema = z.object({
@@ -105,11 +106,5 @@ export const projectWithBootstrapSchema = z.object({
 export type ProjectWithBootstrap = z.infer<typeof projectWithBootstrapSchema>;
 
 export function normalizeProjectSlug(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return normalizeSlugValue(input);
 }

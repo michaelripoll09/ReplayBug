@@ -5,6 +5,7 @@ import type { Auth } from "../auth.js";
 import { getSessionUser } from "../session.js";
 import { sendDomainError } from "./helpers.js";
 import { authRequired, validationError } from "../errors.js";
+import { RATE_LIMIT_POLICIES } from "../plugins/rate-limit.js";
 import {
   getAiAnalysisById,
   listIssueAiAnalyses,
@@ -163,6 +164,10 @@ export async function registerAiAnalysisRoutes(
   app.post(
     "/api/v1/events/:eventId/ai-analyses",
     {
+      config: {
+        // LLM-backed creation: slow and provider-billed (10/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.aiAnalysisCreate },
+      },
       schema: {
         tags: ["AI Analysis"],
         params: {

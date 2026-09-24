@@ -4,6 +4,7 @@ import type { Auth } from "../auth.js";
 import { getSessionUser } from "../session.js";
 import { sendDomainError } from "./helpers.js";
 import { authRequired } from "../errors.js";
+import { RATE_LIMIT_POLICIES } from "../plugins/rate-limit.js";
 import {
   createSecretToken,
   listSecretTokens,
@@ -124,6 +125,10 @@ export async function registerSecretTokenRoutes(
   app.post(
     "/api/v1/projects/:projectId/secret-tokens",
     {
+      config: {
+        // Token creation mints automation credentials (20/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.secretTokenMutation },
+      },
       schema: {
         tags: ["SecretTokens"],
         params: {
@@ -167,6 +172,10 @@ export async function registerSecretTokenRoutes(
   app.post(
     "/api/v1/projects/:projectId/secret-tokens/:tokenId/revoke",
     {
+      config: {
+        // Token revocation kills automation credentials (20/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.secretTokenMutation },
+      },
       schema: {
         tags: ["SecretTokens"],
         params: {

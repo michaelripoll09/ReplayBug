@@ -20,6 +20,7 @@ import { type AppInstance } from "./instance.js";
 import { createAuth, type Auth } from "./auth.js";
 import { registerRequestId } from "./plugins/request-id.js";
 import { registerErrorHandler } from "./plugins/error-handler.js";
+import { registerRateLimit } from "./plugins/rate-limit.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAiAnalysisRoutes } from "./routes/ai-analyses.js";
@@ -71,6 +72,11 @@ export async function buildApp(options: BuildAppOptions): Promise<AppInstance> {
 
   await registerRequestId(app);
   await registerErrorHandler(app);
+
+  // Coarse outer DoS guard (1000 req / 60 s per observed IP). Registered
+  // before all routes so every handler is covered; the specialized ingest
+  // DB limiter and Better Auth limiter stay authoritative for their quotas.
+  await registerRateLimit(app, config);
 
   // Strict dashboard CORS with credentials. Never "*" when credentials are on.
   await app.register(cors, {

@@ -83,6 +83,30 @@ and verify Secure, HttpOnly, and SameSite cookie behavior through the proxy.
 Set forwarded protocol/host headers correctly so auth never treats HTTPS
 browser traffic as plain HTTP.
 
+## Rate limiting
+
+ReplayBug has a coarse in-memory API rate limiter per API process
+(`@fastify/rate-limit`, registered globally). The default outer policy is
+1000 requests / 60 seconds per IP as observed by Fastify. Exceeding it
+returns `429` with a `Retry-After` header and a safe `RATE_LIMITED`
+envelope (no IPs, keys, cookies, or tokens in the body).
+
+Stricter per-route limits apply to clearly expensive or
+security-sensitive operations (AI analysis creation, reproduction
+generation, secret-token mutations, invitation lifecycle mutations, CLI
+artifact upload, issue lifecycle mutations). Ordinary reads stay on the
+global default.
+
+Ingest retains its separate PostgreSQL project/key rate limiter
+(per-minute request and event quotas with `429` + `Retry-After`),
+and Better Auth retains its own auth limiter (100 requests / 60 seconds).
+No Redis is required: in-memory counters are per process, so
+multi-instance deployments do NOT share global limiter counters.
+ReplayBug does not automatically trust `X-Forwarded-For`; operators
+behind a reverse proxy should configure abuse/rate controls at the
+trusted edge if they require client-IP-aware distributed enforcement.
+Do not blindly enable `trustProxy` to work around this.
+
 ## Artifact storage
 
 `REPLAYBUG_ARTIFACT_DIR` is the shared artifact root for API and worker. In the

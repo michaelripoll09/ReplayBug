@@ -17,6 +17,7 @@ import type { Auth } from "../auth.js";
 import { getSessionUser } from "../session.js";
 import { sendDomainError } from "./helpers.js";
 import { authRequired } from "../errors.js";
+import { RATE_LIMIT_POLICIES } from "../plugins/rate-limit.js";
 import {
   assignIssueTag,
   createIssueComment,
@@ -1032,6 +1033,10 @@ export async function registerIssueRoutes(
   app.patch(
     "/api/v1/issues/:issueId/status",
     {
+      config: {
+        // Triage state transition (60/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.issueMutation },
+      },
       schema: {
         tags: ["Issues"],
         params: {
@@ -1082,6 +1087,10 @@ export async function registerIssueRoutes(
   app.patch(
     "/api/v1/issues/:issueId/assignee",
     {
+      config: {
+        // Triage assignment change (60/min).
+        rateLimit: { ...RATE_LIMIT_POLICIES.issueMutation },
+      },
       schema: {
         tags: ["Issues"],
         params: {

@@ -31,6 +31,12 @@ docker compose -f docker-compose.full.yml --profile migrate run --rm migrate
 docker compose -f docker-compose.full.yml up -d api worker web demo
 ```
 
+GitHub OAuth is optional. Full Compose forwards `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET` to the API when the host supplies them; configure both
+together. Email/password authentication and core operation work without any
+GitHub integration. Keep OAuth credentials in deployment-managed environment
+or secrets, and never commit the client secret.
+
 Migrations are intentionally **not** run by API or worker startup. PostgreSQL,
 API, web, and demo have healthchecks, and Compose dependencies wait for health
 rather than using arbitrary sleeps. The worker validates PostgreSQL itself at
@@ -65,15 +71,17 @@ API under the public URLs configured above. A same-origin setup (for example,
 web at `https://replaybug.example.com` and proxy `/api` to API) minimizes CORS
 and cookie complexity. Do not expose PostgreSQL publicly.
 
-Use a long random `REPLAYBUG_AUTH_SECRET` and `REPLAYBUG_USER_HMAC_SECRET`,
-not the local Compose defaults. Configure `REPLAYBUG_WEB_URL` and
-`REPLAYBUG_API_URL` to their externally visible HTTPS origins. Keep
-`REPLAYBUG_TRUSTED_ORIGINS` an exact, comma-separated allow-list of browser
-origins; never use `*` with credentialed requests. If web and API are on
-different origins, configure CORS only for the dashboard origin and verify
-Secure, HttpOnly, and SameSite cookie behavior through the proxy. Set forwarded
-protocol/host headers correctly so auth never treats HTTPS browser traffic as
-plain HTTP.
+Use fresh, long random values for `REPLAYBUG_AUTH_SECRET` and
+`REPLAYBUG_USER_HMAC_SECRET`; development placeholders are not production
+secrets. Configure `REPLAYBUG_WEB_URL` and `REPLAYBUG_API_URL` to their
+externally visible HTTPS origins. Compose forwards `REPLAYBUG_TRUSTED_ORIGINS`
+when the host supplies it; otherwise the API uses `REPLAYBUG_WEB_URL` as the
+trusted dashboard origin. When supplied, keep it as an exact, comma-separated
+allow-list of browser origins; never use `*` with credentialed requests. If web
+and API are on different origins, configure CORS only for the dashboard origin
+and verify Secure, HttpOnly, and SameSite cookie behavior through the proxy.
+Set forwarded protocol/host headers correctly so auth never treats HTTPS
+browser traffic as plain HTTP.
 
 ## Artifact storage
 
@@ -141,6 +149,9 @@ REPLAYBUG_OLLAMA_MODEL=<your-local-model>
 REPLAYBUG_OLLAMA_TIMEOUT_MS=30000
 ```
 
-Set both URL and model or neither. ReplayBug neither downloads models nor
+Compose forwards these optional settings to both API and worker when the host
+supplies them. Set URL and model together or leave both absent; the capability
+is disabled by default. ReplayBug neither downloads models nor includes or
 requires a Compose Ollama service. A down, slow, or misconfigured provider
-only affects AI analysis; it does not make core API readiness fail.
+only affects AI analysis; core telemetry and issue grouping remain independent,
+and provider availability does not make API readiness fail.

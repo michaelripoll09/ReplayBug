@@ -13,10 +13,10 @@ context and consequences. One ADR per file, numbered in order, in
    — `rb_pk_…` browsers vs `rb_sk_…` CLI automation, separate formats,
    transports, and privilege.
 3. [Local-first artifact storage abstraction](0003-local-first-artifact-storage-abstraction.md)
-   — filesystem-backed `ArtifactStorage` seam and server-generated keys;
-   Block 9 supersedes worker-read-only access so the worker reads for
-   symbolication and deletes durable cleanup artifacts from a writable shared
-   mount.
+   — filesystem-backed `ArtifactStorage` seam and server-generated keys; the
+   2025-07-16 lifecycle update supersedes worker-read-only access so the worker
+   reads for symbolication and deletes durable cleanup artifacts from a
+   writable shared mount.
 4. [Semantic timeline instead of DOM/video replay](0004-semantic-timeline-over-video-replay.md)
    — bounded, privacy-conscious interaction evidence that can support a
    deterministic reproduction.

@@ -1,4 +1,4 @@
-# ReplayBug CLI — Releases and Source Maps (Block 7)
+# ReplayBug CLI — Releases and Source Maps
 
 The `replaybug` CLI manages releases and uploads source maps from CI or a
 developer machine. It authenticates with a **secret project token** over

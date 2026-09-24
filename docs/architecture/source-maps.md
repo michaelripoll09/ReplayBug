@@ -1,6 +1,6 @@
-# Source Maps — Releases, Artifacts, Symbolication (Block 7)
+# Source Maps — Releases, Artifacts, Symbolication
 
-Block 7 turns minified production stacks into original-source stacks:
+ReplayBug turns minified production stacks into original-source stacks:
 secret-token CLI uploads build artifacts per release, the worker
 symbolicates event frames against those artifacts **before**
 fingerprinting, and the dashboard shows mapped stacks with a raw fallback.
@@ -162,7 +162,7 @@ never file contents. All artifact-derived strings render as escaped text.
 `selectMappedFingerprintFrames` (`fingerprint-frames.ts`) implements the
 canonical rule:
 
-1. Custom developer fingerprints (Block 5) always win — this helper is
+1. Custom developer fingerprints always win — this helper is
    never consulted for them.
 2. When at least one useful mapped in-application frame exists
    (`mapped: true`, `inApplication: true`), fingerprinting uses mapped

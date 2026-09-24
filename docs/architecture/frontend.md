@@ -1,7 +1,7 @@
-# Frontend: Web Auth + Operations Dashboard (Block 9)
+# Frontend: Web Auth + Operations Dashboard
 
 The Next.js dashboard is a thin, typed, cookie-forwarding client for the
-Fastify API. By Block 9 it covers onboarding, project operations, issue
+Fastify API. It covers onboarding, project operations, issue
 investigation, and workspace governance; Fastify remains the authority for
 business rules and RBAC.
 

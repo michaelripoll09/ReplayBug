@@ -1,6 +1,6 @@
 # ADR 0002 — Public ingest key versus secret token separation
 
-Status: accepted (Block 7)
+Status: accepted
 
 ## Problem
 

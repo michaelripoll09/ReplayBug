@@ -1,6 +1,6 @@
-# Optional Local AI Analysis (Block 10)
+# Optional Local AI Analysis
 
-Block 10 adds an optional, local-first issue analysis path: an operator can
+ReplayBug provides an optional, local-first issue analysis path: an operator can
 point ReplayBug at a local Ollama endpoint, and the worker sends a bounded,
 sanitized evidence bundle for one retained occurrence and stores the
 model's structured hypothesis. The feature is an enhancement only — core
